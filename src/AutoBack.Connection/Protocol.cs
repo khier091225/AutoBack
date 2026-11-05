@@ -77,14 +77,14 @@ public sealed record AgentCredentials(string Host, int Port, string CertificateS
 public sealed record AgentRequest(int Version, string Kind, Guid AgentId, string Secret, string? InvitationSecret = null,
     string? Name = null, string? MachineName = null, string? AgentVersion = null,
     BackupConfiguration? Configuration = null, BackupReport? Report = null,
-    CloudConfiguration? CloudConfiguration = null, CloudReport? CloudReport = null);
+    CloudConfiguration? CloudConfiguration = null, CloudReport? CloudReport = null, RestoreSummary? LatestRestore = null);
 public sealed record HostResponse(bool Accepted, string Message, DateTimeOffset ServerUtc,
     BackupCommand? Command = null, Guid? AcknowledgedJobId = null, long AcknowledgedSequence = 0,
     Guid? AcknowledgedCloudJobId = null, long AcknowledgedCloudSequence = 0);
 public sealed record AgentSnapshot(Guid Id, string Name, string MachineName, string AgentVersion, string Address,
     DateTimeOffset PairedUtc, DateTimeOffset? LastSeenUtc, bool Online,
     BackupConfiguration? Configuration = null, HostBackupJob? LatestJob = null, HostBackupJob? LastSuccessfulJob = null,
-    CloudConfiguration? CloudConfiguration = null, HostBackupJob? LatestCloudJob = null);
+    CloudConfiguration? CloudConfiguration = null, HostBackupJob? LatestCloudJob = null, RestoreSummary? LatestRestore = null);
 public sealed record ConnectionActivity(DateTimeOffset TimeUtc, string Title, string Description);
 
 public sealed record BackupConfiguration(string PlanId, string Source, string Destination);
@@ -96,6 +96,19 @@ public sealed record HostBackupJob(Guid AgentId, string AgentName, BackupCommand
 public sealed record CloudConfiguration(string State, string Account, string Detail);
 public sealed record CloudReport(Guid JobId, long Sequence, string State, int Percent, long BytesUploaded, long TotalBytes,
     string Detail, string? FileId = null, string? WebLink = null);
+public sealed record RestoreSummary(Guid OperationId, string State, string SourceKind, string Destination, int Percent,
+    int Files, long Bytes, string Detail, DateTimeOffset UpdatedUtc, Guid? BackupJobId = null);
+
+public static class RestoreStates
+{
+    public static bool Terminal(string state) => state is "Completed" or "Failed" or "Cancelled" or "Interrupted";
+    public static bool ValidSummary(RestoreSummary? summary) => summary is null ||
+        (summary.OperationId != Guid.Empty && summary.State is "Downloading" or "Validating" or "Restoring" or "Verifying" or "Publishing" or "Completed" or "Failed" or "Cancelled" or "Interrupted" &&
+            summary.SourceKind is "Local" or "GoogleDrive" or "Verify" && summary.Percent is >= 0 and <= 100 &&
+            summary.Files >= 0 && summary.Bytes >= 0 && BackupStates.ValidText(summary.Destination, 1024) && BackupStates.ValidText(summary.Detail, 1024) &&
+            (summary.BackupJobId is null || summary.BackupJobId != Guid.Empty) &&
+            (summary.State != "Completed" || (summary.Percent == 100 && summary.BackupJobId is not null)));
+}
 
 public static class CloudStates
 {

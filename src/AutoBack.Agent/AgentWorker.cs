@@ -11,6 +11,7 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await using var backups = new BackupCoordinator(store, credentials.AgentId);
+        RestoreHistory.RecoverInterrupted(store);
         using var driveHttp = DriveHttp.CreateClient();
         await using var uploads = new CloudUploadCoordinator(store, driveHttp, credentials.AgentId, credentials.Name);
         var failures = 0;
@@ -22,7 +23,7 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
             try
             {
                 var plan = backups.LoadPlan();
-                var response = await client.PollAsync(credentials, plan?.Summary, backups.NextReport(), stoppingToken, uploads.Configuration, uploads.NextReport());
+                var response = await client.PollAsync(credentials, plan?.Summary, backups.NextReport(), stoppingToken, uploads.Configuration, uploads.NextReport(), RestoreHistory.Latest(store));
                 backups.Acknowledge(response.AcknowledgedJobId, response.AcknowledgedSequence);
                 backups.Handle(response.Command);
                 uploads.Acknowledge(response.AcknowledgedCloudJobId, response.AcknowledgedCloudSequence);

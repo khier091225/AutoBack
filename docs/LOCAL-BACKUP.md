@@ -4,7 +4,7 @@ The host requests a job; the authenticated client creates and verifies a new ZIP
 
 ## 1. Update the host and agent
 
-Use the version 0.4 host **and** agent (protocol 3). Close the previous host window and stop the previous agent before replacing its executable folder. Saved identities and pairing credentials are retained. Older binaries cannot use the new job protocol.
+Use the version 0.5 host **and** agent (protocol 3). Close the previous host window and stop the previous agent before replacing its executable folder. Saved identities and pairing credentials are retained. Version 0.5 adds optional restore reporting to protocol 3.
 
 Publish from the repository if needed:
 
@@ -97,7 +97,7 @@ While a job runs, its output has a `.partial` suffix. Only a closed, flushed, ve
 - Cancellation is best effort until publication. If the archive finished before the cancel command arrived, the result can still be Completed.
 - No files are silently skipped: locked/unreadable files or detected source changes fail the job. Files are opened read-only without permitting concurrent writers. A second scan checks additions/removals and size/time changes. This is **not** a transactional filesystem/VSS snapshot; close applications editing the source before a backup.
 - This milestone supports ordinary files/folders, not live databases, complete Windows images, NTFS permissions/alternate data streams, or snapshot recovery.
-- ZIP archives are **unencrypted**. Encryption, retention, schedules, automatic retry policies, and installers are later work. A restore interface and a full restore drill remain milestone 4; archive checksum verification alone does not replace that drill.
+- ZIP archives are **unencrypted**. Encryption, retention, schedules, automatic backup retry policies, and installers are later work. Use the [restore guide](RESTORE.md) to recover a local or Google Drive ZIP into a new folder and verify every recovered file. Archive upload verification alone does not replace a restore drill.
 - Windows Service folder access and multi-PC LAN behavior still need validation in the target office environment. Automated tests exercise real filesystem archives and real host/agent processes on loopback.
 
 Implementation references: [Microsoft ZipArchive API](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchive) and [FileShare semantics](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare).

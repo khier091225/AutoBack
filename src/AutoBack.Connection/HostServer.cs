@@ -13,7 +13,7 @@ public sealed class HostServer : IAsyncDisposable
 {
     private sealed record StoredAgent(Guid Id, string Name, string MachineName, string AgentVersion, string Address,
         string SecretHash, DateTimeOffset PairedUtc, DateTimeOffset? LastSeenUtc = null, bool Revoked = false,
-        BackupConfiguration? Configuration = null, CloudConfiguration? CloudConfiguration = null);
+        BackupConfiguration? Configuration = null, CloudConfiguration? CloudConfiguration = null, RestoreSummary? LatestRestore = null);
     private sealed record Registry(List<StoredAgent> Agents, List<HostBackupJob>? Jobs = null);
     private sealed record PendingInvitation(string SecretHash, DateTimeOffset ExpiresUtc);
     private readonly object _gate = new();
@@ -99,7 +99,7 @@ public sealed class HostServer : IAsyncDisposable
                 IsRunning && _seenThisRun.Contains(a.Id) && a.LastSeenUtc.HasValue && now - a.LastSeenUtc.Value < _offlineAfter,
                 a.Configuration, _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id),
                 _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed"), a.CloudConfiguration,
-                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault())).ToArray();
+                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore)).ToArray();
     }
 
     public IReadOnlyList<HostBackupJob> GetJobs()
@@ -255,6 +255,7 @@ public sealed class HostServer : IAsyncDisposable
                 return Denied("Agent is not authorized. Pair this client again.");
             if (!BackupStates.ValidConfiguration(request.Configuration)) return Denied("Invalid backup configuration report.");
             if (!CloudStates.ValidConfiguration(request.CloudConfiguration)) return Denied("Invalid cloud configuration report.");
+            if (!RestoreStates.ValidSummary(request.LatestRestore)) return Denied("Invalid restore summary.");
             var jobs = _registry.Jobs!;
             var report = request.Report;
             HostBackupJob? acknowledged = null;
@@ -285,6 +286,7 @@ public sealed class HostServer : IAsyncDisposable
             }
             var updated = known with { LastSeenUtc = now, Address = address, Configuration = request.Configuration,
                 CloudConfiguration = request.CloudConfiguration,
+                LatestRestore = request.LatestRestore ?? known.LatestRestore,
                 AgentVersion = BackupStates.ValidText(request.AgentVersion, 40) ? request.AgentVersion! : known.AgentVersion };
             Save(_registry with { Agents = _registry.Agents.Select(a => a.Id == known.Id ? updated : a).ToList(), Jobs = jobs });
             _seenThisRun.Add(known.Id);
@@ -295,6 +297,8 @@ public sealed class HostServer : IAsyncDisposable
                 if (_loggedResults.Add(report.JobId)) Log("Local backup " + report.State.ToLowerInvariant(), $"{known.Name}: {report.Detail}");
             }
             var pending = jobs.FirstOrDefault(j => j.AgentId == known.Id && !BackupStates.Terminal(j.Report.State));
+            if (request.LatestRestore is { } recovery && RestoreStates.Terminal(recovery.State) && _loggedRestores.Add(recovery.OperationId))
+                Log("Restore " + recovery.State.ToLowerInvariant(), $"{known.Name}: {recovery.Detail}");
             if (cloudAcknowledged?.Cloud is { State: "Completed" or "Failed" or "Needs sign-in" } cloudResult &&
                 _loggedCloudResults.Add((cloudResult.JobId, cloudResult.State)))
                 Log("Cloud upload " + cloudResult.State.ToLowerInvariant(), $"{known.Name}: {cloudResult.Detail}");
@@ -311,6 +315,7 @@ public sealed class HostServer : IAsyncDisposable
 
     private readonly HashSet<Guid> _loggedResults = [];
     private readonly HashSet<(Guid, string)> _loggedCloudResults = [];
+    private readonly HashSet<Guid> _loggedRestores = [];
 
     private void Save(Registry registry)
     {

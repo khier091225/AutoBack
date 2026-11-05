@@ -1,8 +1,8 @@
-# Google Drive setup — AutoBack 0.4
+# Google Drive setup — AutoBack 0.5
 
 Ang client PC mismo ang mag-a-upload sa Google Drive matapos gumawa ng successful local backup. Magkahiwalay ang local at cloud result sa host. Hindi ipinapadala sa host ang Google tokens o ang backup ZIP.
 
-**Current validation:** automated tests use simulated Google HTTP responses and real local ZIPs/host connections. Kailangan pa ang OAuth setup at isang live upload test sa sarili mong Google account bago i-confirm ang office deployment.
+**Current validation:** pumasa ang automated tests at isang live Google Drive test noong November 5, 2026. Gumawa ang paired client ng ZIP mula sa dalawang synthetic sample files, direktang nag-upload sa Google Drive, at nagtugma ang remote file size at checksum sa local archive. Parehong Completed ang local at cloud result. Same-PC console mode ang live test; kailangan pa ang Windows Service at cross-PC office validation.
 
 ## A. One-time Google Cloud setup
 
@@ -22,7 +22,7 @@ Gamitin ang parehong Desktop client JSON para sa office client PCs na gumagamit 
 
 ## B. Update both host and client
 
-Kailangan ang version **0.4 / protocol 3** sa host at agent. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
+Gamitin ang version **0.5 / protocol 3** sa host at agent para sa uploads at restore reporting. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
 
 Sa development PC, kung kailangan mag-publish:
 
@@ -86,7 +86,7 @@ AutoBack Backups/
 
 Ang root folder ay nire-reuse kapag nakikita ng parehong OAuth app/account; bawat agent ay may sariling subfolder. Shared Drives and an arbitrary existing destination folder picker are not included in this milestone.
 
-**Cloud complete is a confirmed upload, not a complete restore drill.** Download/restore workflow at recovery verification ang milestone 4. ZIPs are still unencrypted; encryption and retention remain milestone 5.
+**Cloud complete confirms the upload.** Para sa restore drill, sundin ang [Restore and verification guide](RESTORE.md): download the selected Drive backup directly to the client and recover into a fresh folder with full SHA-256 readback. ZIPs are still unencrypted; encryption and retention remain milestone 5.
 
 ## F. Interrupted uploads, errors, and retry
 
@@ -122,7 +122,7 @@ Use `--machine` for the service store. Local credentials are removed; existing l
 
 | Problem | Check |
 | --- | --- |
-| Google blocks sign-in | Correct Cloud project, Desktop client type, consent setup, test-user email, and Workspace admin policy. |
+| Google blocks sign-in | Correct Cloud project, Desktop client type, consent setup, test-user email, and Workspace admin policy. For “app is currently being tested / developer-approved testers / 403 access_denied”, open Audience → Test users → Add users, add the exact sign-in email, and Save; then start a fresh drive-connect attempt. |
 | JSON rejected | Use the downloaded Desktop app JSON with an `installed` section, not a Web client/service account/API key. |
 | Account changes rejected while running | Stop the console agent/service first; account management uses the agent instance lock. |
 | Local complete, cloud not connected | Run `drive-connect` on that client with the same data scope as `run`. |
@@ -132,4 +132,4 @@ Use `--machine` for the service store. Local credentials are removed; existing l
 | Local file missing or changed | Keep the original archive available for resume, or start a fresh backup job. |
 | No cloud progress on host | Check agent connectivity and client logs. Last reported progress is retained on disconnect. |
 
-A live successful upload has not yet been verified in your Google environment. Follow section E after creating the Desktop OAuth client to complete that validation.
+A live successful upload has been verified using the configured Google account. The test agent was stopped and the original backup-folder configuration restored afterward; test source files and the ZIP were retained. Follow section E for another client or after deployment changes, then use the [restore guide](RESTORE.md) to verify recovery.

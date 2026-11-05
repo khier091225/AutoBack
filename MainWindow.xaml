@@ -27,6 +27,9 @@
                     <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Activity" Click="Navigate_Click" IsChecked="{Binding IsActivity, Mode=OneWay}" AutomationProperties.AutomationId="NavActivity">
                         <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE81C;" Margin="0,0,13,0" /><TextBlock Text="Activity" /></StackPanel>
                     </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Restore" Click="Navigate_Click" IsChecked="{Binding IsRestore, Mode=OneWay}" AutomationProperties.AutomationId="NavRestore">
+                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE777;" Margin="0,0,13,0" /><TextBlock Text="Restore" /></StackPanel>
+                    </RadioButton>
                     <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Settings" Click="Navigate_Click" IsChecked="{Binding IsSettings, Mode=OneWay}" AutomationProperties.AutomationId="NavSettings">
                         <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" Margin="0,0,13,0" /><TextBlock Text="Settings" /></StackPanel>
                     </RadioButton>
@@ -42,7 +45,7 @@
                     <StackPanel>
                         <TextBlock Text="HOST WORKSPACE" FontSize="10" Foreground="#78909E" FontWeight="SemiBold" />
                         <TextBlock Text="Office backup manager" Foreground="#DDE7EC" Margin="0,8,0,5" />
-                        <TextBlock Text="Direct cloud uploads · v0.4" FontSize="11" Foreground="#8BA1AE" />
+                        <TextBlock Text="Verified recovery · v0.5" FontSize="11" Foreground="#8BA1AE" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -215,6 +218,48 @@
                         <StackPanel><TextBlock Text="Recent activity" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Real host and client connection events from this session. Newest events appear first." Style="{StaticResource MutedText}" Margin="0,7,0,15" TextWrapping="Wrap" /><ItemsControl ItemsSource="{Binding Activities}" ItemTemplate="{StaticResource ActivityTemplate}" /></StackPanel>
                     </Border>
 
+                    <StackPanel Visibility="{Binding IsRestore, Converter={StaticResource BoolVisibility}}">
+                        <Border Style="{StaticResource Card}" Background="#F0F6F4" BorderBrush="#DCE9E3" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="A fresh copy. Checked file by file." FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock Text="Choose a backup below and open its client instructions. On the client, stop the agent, run restore, and select a folder for the recovered copy. AutoBack creates a new recovery folder and checks every file against the backup manifest." Foreground="#547268" TextWrapping="Wrap" LineHeight="23" Margin="0,12,0,12" />
+                                <TextBlock Text="Recovered content is in the new folder's files subfolder. Restart the agent afterward to report the saved result here. Full guide: docs/RESTORE.md." Foreground="#547268" TextWrapping="Wrap" LineHeight="22" />
+                                <TextBox IsReadOnly="True" FontFamily="Consolas" Margin="0,16,0,0" Text=".\AutoBack.Agent.exe restore&#10;.\AutoBack.Agent.exe verify-restore&#10;.\AutoBack.Agent.exe run" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="Choose a backup" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="Latest 100 jobs. A completed local backup can be restored while its cloud upload is pending. Google Drive recovery downloads through the account connected on that client." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,9,0,15" />
+                                <ItemsControl ItemsSource="{Binding BackupHistory}"><ItemsControl.ItemTemplate><DataTemplate>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,13">
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock FontWeight="SemiBold"><Run Text="{Binding Computer}" /><Run Text=" · " /><Run Text="{Binding Time}" /></TextBlock>
+                                                <TextBlock Foreground="{StaticResource Muted}" Margin="0,6,0,0"><Run Text="Local: " /><Run Text="{Binding State}" /><Run Text="   ·   Cloud: " /><Run Text="{Binding CloudState}" /></TextBlock>
+                                                <TextBlock Text="{Binding ArchivePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,0" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Restore instructions…" Click="RestoreInstructions_Click" IsEnabled="{Binding CanRestore}" VerticalAlignment="Center" AutomationProperties.AutomationId="RestoreInstructions" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="Latest recovery result per client" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="Saved client reports arrive after the agent reconnects. A verified restore has passed a full readback of file names, sizes, and SHA-256 checksums." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,9,0,15" />
+                                <ItemsControl ItemsSource="{Binding Computers}"><ItemsControl.ItemTemplate><DataTemplate>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,13"><StackPanel>
+                                        <DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding RestoreStatus}" Foreground="{Binding RestoreColor}" FontWeight="SemiBold" /><TextBlock Text="{Binding Name}" FontWeight="SemiBold" /></DockPanel>
+                                        <TextBlock Text="{Binding RestoreDetail}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,7,0,0" />
+                                        <TextBox Text="{Binding RestoreDestination, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                    </StackPanel></Border>
+                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <StackPanel Visibility="{Binding IsSettings, Converter={StaticResource BoolVisibility}}">
                         <Border Style="{StaticResource Card}" Margin="0,0,0,18">
                             <StackPanel>
@@ -248,7 +293,7 @@
                                 <Button Content="Save demo schedule" Command="{Binding SaveScheduleCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" AutomationProperties.AutomationId="SaveSchedule" />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Protection &amp; recovery" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Local ZIP versions and SHA-256 archive verification are available. Encrypted archives, retention policies, scheduled retries, and a verified restore flow are planned for later milestones." Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="22" /></StackPanel></Border>
+                        <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Protection &amp; recovery" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Local and Google Drive backups can be recovered through the Restore page, with full SHA-256 readback verification. Schedules, encrypted archives, retention policies, and installers are the next milestone." Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="22" /></StackPanel></Border>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

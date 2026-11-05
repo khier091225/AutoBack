@@ -4,11 +4,11 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="..\..\docs\GOOGLE-DRIVE-SETUP.md" Link="GOOGLE-DRIVE-SETUP.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\docs\*.md" Link="docs\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="..\AutoBack.Connection\AutoBack.Connection.csproj" />
     <ProjectReference Include="..\AutoBack.Backup\AutoBack.Backup.csproj" />
     <ProjectReference Include="..\AutoBack.Drive\AutoBack.Drive.csproj" />

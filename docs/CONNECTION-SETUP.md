@@ -1,6 +1,6 @@
 # Host and client connection setup
 
-Pairing, live monitoring, local backup, and direct Google Drive upload are available. Follow [local backup setup](LOCAL-BACKUP.md) after pairing, then [Google Drive setup](GOOGLE-DRIVE-SETUP.md) to authorize each client.
+Pairing, live monitoring, local backup, direct Google Drive upload, and verified recovery are available. Follow [local backup setup](LOCAL-BACKUP.md) after pairing, then [Google Drive setup](GOOGLE-DRIVE-SETUP.md) to authorize each client and [restore guide](RESTORE.md) to test recovery.
 
 ## 1. Run the host
 
@@ -97,7 +97,7 @@ To unregister the service, run `Uninstall-AgentService.ps1` as administrator. It
 - **Agent restart:** stored credentials are reused.
 - **Revoke:** the host rejects that identity immediately and persists the revocation. The device is removed from active inventory. Stop its agent, create a fresh invitation, and use `pair --replace` (plus `--machine` for the service) to give it a new identity before starting again.
 
-Connection activity is session history; devices, last heartbeat, and local/cloud job history persist. Google Drive uploads require per-client authorization. Protocol 3 requires the version 0.4 host and agent; update both binaries. Saved pairing credentials are reused after updating.
+Connection activity is session history; devices, last heartbeat, local/cloud job history and the latest recovery result persist. Google Drive uploads/downloads require per-client authorization. Use the version 0.5 host and agent (protocol 3) for the Restore page and recovery reporting. Saved pairing credentials are reused after updating.
 
 ## Troubleshooting
 

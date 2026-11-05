@@ -82,6 +82,11 @@ public sealed class Computer : ObservableObject
     public bool CloudActive => LatestCloud?.State is "Uploading" or "Queued" or "Retrying";
     public bool DriveConnected => _snapshot?.CloudConfiguration?.State == "Connected";
     public string CloudDetail => $"{CloudAccount} · {LatestCloud?.Detail ?? _snapshot?.CloudConfiguration?.Detail ?? "Run drive-connect on this client to authorize Google Drive."}";
+    public RestoreSummary? LatestRestore => _snapshot?.LatestRestore;
+    public string RestoreStatus => LatestRestore?.State == "Completed" ? "Verified" : LatestRestore?.State ?? "No restore reported";
+    public string RestoreDestination => LatestRestore?.Destination ?? "Choose a new folder on the client when restoring.";
+    public string RestoreDetail => LatestRestore is { } r ? $"{r.SourceKind} · {r.Files} files · {FormatBytes(r.Bytes)} · {r.UpdatedUtc.ToLocalTime():MMM dd, hh:mm tt} · {r.Detail}" : "Run restore on this client, then restart its agent to send the saved result here.";
+    public string RestoreColor => RestoreStatus == "Verified" ? "#14806D" : RestoreStatus is "Failed" or "Interrupted" ? "#B16C13" : "#6F7890";
 
     public void Update(AgentSnapshot snapshot)
     {
@@ -92,6 +97,7 @@ public sealed class Computer : ObservableObject
         Address = snapshot.Address;
         foreach (var property in new[] { nameof(Online), nameof(Connection), nameof(ConnectionColor), nameof(LastSeenUtc), nameof(LastSeenText), nameof(Address), nameof(AgentVersion), nameof(Team), nameof(Folder), nameof(Destination), nameof(Configured), nameof(LatestJob), nameof(IsBusy), nameof(CanBackup), nameof(Size), nameof(Status), nameof(StatusColor), nameof(StatusBackground), nameof(LastBackup), nameof(IsUploading), nameof(Progress), nameof(ProgressText), nameof(BackupDetail) }) Changed(property);
         foreach (var property in new[] { nameof(CloudAccount), nameof(LatestCloud), nameof(CloudStatus), nameof(CloudColor), nameof(CloudBackground), nameof(CloudPercent), nameof(CloudActive), nameof(DriveConnected), nameof(CloudDetail) }) Changed(property);
+        foreach (var property in new[] { nameof(LatestRestore), nameof(RestoreStatus), nameof(RestoreDestination), nameof(RestoreDetail), nameof(RestoreColor) }) Changed(property);
     }
 
     public static string FormatBytes(long bytes) => bytes >= 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024 * 1024):0.0} GB" : bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024):0.0} MB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes} B";
@@ -102,6 +108,7 @@ public sealed record BackupHistoryEntry(string Computer, string State, string Ti
     string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "")
 {
     public bool HasCloudLink => CloudLink.Length > 0;
+    public bool CanRestore => State == "Completed" && (ArchivePath.Length > 0 || HasCloudLink);
 }
 
 public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
@@ -246,19 +253,21 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         set
         {
             if (!Set(ref _page, value)) return;
-            foreach (var property in new[] { nameof(IsOverview), nameof(IsComputers), nameof(IsActivity), nameof(IsSettings), nameof(ShowComputerTable), nameof(PageTitle), nameof(PageDescription) }) Changed(property);
+            foreach (var property in new[] { nameof(IsOverview), nameof(IsComputers), nameof(IsActivity), nameof(IsRestore), nameof(IsSettings), nameof(ShowComputerTable), nameof(PageTitle), nameof(PageDescription) }) Changed(property);
         }
     }
     public bool IsOverview => Page == "Overview";
     public bool IsComputers => Page == "Computers";
     public bool IsActivity => Page == "Activity";
+    public bool IsRestore => Page == "Restore";
     public bool IsSettings => Page == "Settings";
     public bool ShowComputerTable => IsOverview || IsComputers;
-    public string PageTitle => Page switch { "Computers" => "Your computers", "Activity" => "Backup & connection activity", "Settings" => "Host settings", _ => "Your office, backed up." };
+    public string PageTitle => Page switch { "Computers" => "Your computers", "Activity" => "Backup & connection activity", "Restore" => "Recover with confidence.", "Settings" => "Host settings", _ => "Your office, backed up." };
     public string PageDescription => Page switch
     {
         "Computers" => "Real paired computers, with connection status reported by their agents.",
         "Activity" => "Saved local backup jobs and connection events from this session.",
+        "Restore" => "Recover a local or Google Drive backup into a new folder, then verify every file.",
         "Settings" => "Host identity, client pairing, and the next backup milestones.",
         _ => "Start local backups and follow their progress, all from one place."
     };

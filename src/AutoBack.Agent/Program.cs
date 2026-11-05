@@ -17,7 +17,7 @@ internal static class Program
         {
             if (args.Length == 0 || args[0] is "help" or "--help")
             {
-                Console.WriteLine("AutoBack Agent 0.4\npair --invite <file> [--name <name>] [--replace]\nconfigure [--source <folder> --destination <folder>]\ndrive-connect [--client-secrets <Desktop OAuth JSON>]\ndrive-status\ndrive-disconnect\ndrive-retry\nrun\nstatus\n\nAll commands accept [--machine] [--data-dir <dedicated folder>].\nconfigure opens source/destination pickers; drive-connect opens Google sign-in in your browser.\nStop the agent/service before drive-connect, drive-disconnect, or drive-retry.\nUse --machine from an elevated terminal for Windows Service configuration.\nThe client uploads completed local backups directly to Google Drive when connected.");
+                Console.WriteLine("AutoBack Agent 0.5\npair --invite <file> [--name <name>] [--replace]\nconfigure [--source <folder> --destination <folder>]\ndrive-connect [--client-secrets <Desktop OAuth JSON>]\ndrive-status\ndrive-disconnect\ndrive-retry\nrestore [--archive <ZIP> | --drive-file <ID or link>] [--destination <NEW folder>]\nverify-restore [--destination <restored folder>]\nrestore-status\nrun\nstatus\n\nAll commands accept [--machine] [--data-dir <dedicated folder>].\nconfigure and restore open file/folder pickers when paths are omitted.\nStop the agent/service before changing Drive authorization or running restore/verify-restore.\nUse the same --machine/--data-dir and Windows account as the agent.\nRestore writes recovered content to <destination>/files, verifies every SHA-256, and never overwrites an existing destination.\nRestart the agent after restore to send its saved result to the host. See docs/RESTORE.md.");
                 return 0;
             }
             var options = Parse(args.Skip(1).ToArray());
@@ -26,6 +26,12 @@ internal static class Program
                 Environment.GetFolderPath(machine ? Environment.SpecialFolder.CommonApplicationData : Environment.SpecialFolder.LocalApplicationData),
                 "AutoBack", "Agent");
             var store = new ProtectedStore(directory, machine);
+            if (args[0] is "restore" or "verify-restore" or "restore-status")
+            {
+                if (args[0] == "restore-status") return await RestoreCommands.ExecuteAsync(args[0], options, store);
+                using var restoreLock = new FileStream(Path.Combine(Path.GetFullPath(directory), ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return await RestoreCommands.ExecuteAsync(args[0], options, store);
+            }
             if (args[0] is "drive-connect" or "drive-status" or "drive-disconnect" or "drive-retry")
             {
                 using var http = DriveHttp.CreateClient();
@@ -150,7 +156,7 @@ internal static class Program
         {
             var key = args[i];
             if (key is "--machine" or "--replace") options.Add(key, null);
-            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets")
+            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file")
             {
                 if (++i == args.Length || args[i].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException($"Missing value for {key}.");
                 options.Add(key, args[i]);

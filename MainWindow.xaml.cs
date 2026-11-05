@@ -76,4 +76,10 @@ public partial class MainWindow : Window
             catch (Win32Exception) { _dashboard.Notice = "The browser could not be opened. The verified Google Drive link is retained in job history."; }
         }
     }
+
+    private void RestoreInstructions_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: BackupHistoryEntry { CanRestore: true } backup })
+            new RestoreInstructionsWindow(backup) { Owner = this }.ShowDialog();
+    }
 }
