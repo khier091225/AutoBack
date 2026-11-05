@@ -1,0 +1,10 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+artifacts/
+*.autoback-invite
+*.dat
+client_secret*.json
+credentials.json

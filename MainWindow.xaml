@@ -1,0 +1,260 @@
+<Window x:Class="AutoBack.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AutoBack · Backup workspace" Width="1440" Height="1000" MinWidth="1220" MinHeight="720"
+        WindowStartupLocation="CenterScreen" Style="{StaticResource {x:Type Window}}">
+    <Grid Background="#F5F7F9">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="208" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+
+        <!-- Persistent workspace navigation. -->
+        <Border Background="#182D39">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="106" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="24,0,0,0" VerticalAlignment="Center">
+                    <Border Background="#238F7D" CornerRadius="10" Width="35" Height="35" Margin="0,0,10,0">
+                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE753;" Foreground="White" FontSize="20" HorizontalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="autoback" FontSize="23" FontWeight="SemiBold" Foreground="White" />
+                </StackPanel>
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="WORKSPACE" FontSize="10" FontWeight="SemiBold" Foreground="#718795" Margin="27,3,0,15" />
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Overview" Click="Navigate_Click" IsChecked="{Binding IsOverview, Mode=OneWay}" AutomationProperties.AutomationId="NavOverview">
+                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE80F;" Margin="0,0,13,0" /><TextBlock Text="Overview" /></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Computers" Click="Navigate_Click" IsChecked="{Binding IsComputers, Mode=OneWay}" AutomationProperties.AutomationId="NavComputers">
+                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7F4;" Margin="0,0,13,0" /><TextBlock Text="Computers" /></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Activity" Click="Navigate_Click" IsChecked="{Binding IsActivity, Mode=OneWay}" AutomationProperties.AutomationId="NavActivity">
+                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE81C;" Margin="0,0,13,0" /><TextBlock Text="Activity" /></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation" Tag="Settings" Click="Navigate_Click" IsChecked="{Binding IsSettings, Mode=OneWay}" AutomationProperties.AutomationId="NavSettings">
+                        <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" Margin="0,0,13,0" /><TextBlock Text="Settings" /></StackPanel>
+                    </RadioButton>
+                    <Border Background="#213C46" CornerRadius="9" Margin="18,34,18,0" Padding="16">
+                        <StackPanel>
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE753;" FontSize="22" Foreground="#74C8B7" Margin="0,0,0,12" />
+                            <TextBlock Text="From PC to cloud." Foreground="#EDF5F4" FontWeight="SemiBold" Margin="0,0,0,7" />
+                            <TextBlock Text="Clients create local backups and upload directly to Google Drive. You stay in control." TextWrapping="Wrap" Foreground="#9FB5BC" FontSize="12" LineHeight="19" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <Border Grid.Row="2" BorderBrush="#2C424F" BorderThickness="0,1,0,0" Padding="23,21">
+                    <StackPanel>
+                        <TextBlock Text="HOST WORKSPACE" FontSize="10" Foreground="#78909E" FontWeight="SemiBold" />
+                        <TextBlock Text="Office backup manager" Foreground="#DDE7EC" Margin="0,8,0,5" />
+                        <TextBlock Text="Direct cloud uploads · v0.4" FontSize="11" Foreground="#8BA1AE" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions><RowDefinition Height="63" /><RowDefinition Height="*" /><RowDefinition Height="36" /></Grid.RowDefinitions>
+            <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="32,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Workspace" Foreground="{StaticResource Muted}" />
+                        <TextBlock Text="/" Foreground="#BDC6CE" Margin="14,0" />
+                        <TextBlock Text="{Binding Page}" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Border Background="#FFF4E1" CornerRadius="5" Padding="10,5" VerticalAlignment="Center" Margin="0,0,20,0">
+                            <TextBlock Text="{Binding HostStatus}" Foreground="#9C6A1D" FontSize="10" FontWeight="Bold" />
+                        </Border>
+                        <Border Width="32" Height="32" CornerRadius="16" Background="#EAF1F2"><TextBlock Text="AD" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" /></Border>
+                        <TextBlock Text="Host workspace" Margin="9,0,0,0" FontSize="12" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="32,26,32,24">
+                <StackPanel>
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding PageTitle}" FontSize="29" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding PageDescription}" Foreground="{StaticResource Muted}" Margin="0,8,16,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="＋   Pair computer" Click="AddComputer_Click" IsEnabled="{Binding CanPair}" VerticalAlignment="Center" AutomationProperties.AutomationId="AddComputer" />
+                    </Grid>
+
+                    <Border Background="#EAF3F1" BorderBrush="#D5E8E2" BorderThickness="1" CornerRadius="8" Padding="15,12" Margin="0,0,0,16">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" FontFamily="Segoe MDL2 Assets" Text="&#xE946;" Foreground="#287D6C" Margin="0,0,11,0" FontSize="16" />
+                            <TextBlock Text="{Binding ConnectionBanner}" TextWrapping="Wrap" Foreground="#41685F" FontSize="12" />
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Overview metrics. -->
+                    <UniformGrid Columns="4" Margin="-6,0,-6,12" Visibility="{Binding IsOverview, Converter={StaticResource BoolVisibility}}">
+                        <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,12">
+                            <StackPanel><TextBlock Text="TOTAL COMPUTERS" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}" /><DockPanel Margin="0,8,0,3"><TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE7F4;" Foreground="#8096A5" FontSize="24" /><TextBlock Text="{Binding TotalCount}" FontSize="30" FontWeight="SemiBold" /></DockPanel><TextBlock Text="In your workspace" Style="{StaticResource MutedText}" /></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,12">
+                            <StackPanel><TextBlock Text="ONLINE NOW" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}" /><DockPanel Margin="0,8,0,3"><TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Foreground="#229D82" FontSize="24" /><TextBlock Text="{Binding OnlineCount}" FontSize="30" FontWeight="SemiBold" /></DockPanel><TextBlock Text="Receiving agent heartbeats" Style="{StaticResource MutedText}" /></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,12">
+                            <StackPanel><TextBlock Text="BACKUP JOBS" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}" /><DockPanel Margin="0,8,0,3"><TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE895;" Foreground="#5A8EC5" FontSize="24" /><TextBlock Text="{Binding ActiveCount}" FontSize="30" FontWeight="SemiBold" /></DockPanel><TextBlock Text="Queued or in progress" Style="{StaticResource MutedText}" /></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,12">
+                            <StackPanel><TextBlock Text="NEEDS ATTENTION" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}" /><DockPanel Margin="0,8,0,3"><TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE7BA;" Foreground="#C29143" FontSize="24" /><TextBlock Text="{Binding AttentionCount}" FontSize="30" FontWeight="SemiBold" /></DockPanel><TextBlock Text="Offline or last backup failed" Style="{StaticResource MutedText}" /></StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <!-- Computer inventory is shared by Overview and Computers. -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,12" Visibility="{Binding ShowComputerTable, Converter={StaticResource BoolVisibility}}">
+                        <StackPanel>
+                            <Grid Margin="21,16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="210" /><ColumnDefinition Width="157" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Computers" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="{Binding ComputerCountText}" Style="{StaticResource MutedText}" Margin="0,4,0,0" /></StackPanel>
+                                <Border Grid.Column="1" BorderBrush="#DCE3E8" BorderThickness="1" CornerRadius="6" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" FontFamily="Segoe MDL2 Assets" Text="&#xE721;" Foreground="#8996A4" Margin="12,0,0,0" />
+                                        <Grid>
+                                            <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" Background="Transparent" AutomationProperties.Name="Search computers" AutomationProperties.AutomationId="ComputerSearch" />
+                                            <TextBlock Text="Search computers…" Foreground="#8C98A4" Margin="12,0" IsHitTestVisible="False">
+                                                <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Search}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </DockPanel>
+                                </Border>
+                                <ComboBox Grid.Column="2" ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" Padding="10,8" VerticalContentAlignment="Center" VerticalAlignment="Center" Margin="0,0,12,0" AutomationProperties.Name="Filter computers" AutomationProperties.AutomationId="ComputerFilter" />
+                                <Button Grid.Column="3" Content="{Binding BackupButtonText}" Command="{Binding BackupSelectedCommand}" Style="{StaticResource PrimaryButton}" VerticalAlignment="Center" AutomationProperties.AutomationId="BackupSelected" ToolTip="Run local backups on selected, configured clients. Offline clients wait for reconnection." />
+                            </Grid>
+                            <Border Background="#F8FAFB" BorderBrush="{StaticResource Line}" BorderThickness="0,1" Padding="21,11">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="*" /><ColumnDefinition Width="88" /><ColumnDefinition Width="120" /><ColumnDefinition Width="135" /><ColumnDefinition Width="120" /><ColumnDefinition Width="55" /><ColumnDefinition Width="148" /></Grid.ColumnDefinitions>
+                                    <Button Content="☑" Command="{Binding SelectVisibleCommand}" Style="{StaticResource TextButton}" Padding="0" HorizontalAlignment="Left" ToolTip="Select or clear visible computers" AutomationProperties.Name="Select all visible computers" />
+                                    <TextBlock Grid.Column="1" Text="COMPUTER" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="2" Text="CONNECTION" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="3" Text="LOCAL BACKUP" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="4" Text="CLOUD UPLOAD" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="5" Text="LAST LOCAL BACKUP" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="6" Text="SIZE" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="7" Text="ACTIONS" FontSize="10" Foreground="{StaticResource Muted}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                                </Grid>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding ComputersView}" AutomationProperties.AutomationId="ComputerList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#EDF0F3" BorderThickness="0,0,0,1" Padding="21,9">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="*" /><ColumnDefinition Width="88" /><ColumnDefinition Width="120" /><ColumnDefinition Width="135" /><ColumnDefinition Width="120" /><ColumnDefinition Width="55" /><ColumnDefinition Width="148" /></Grid.ColumnDefinitions>
+                                                <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{Binding Name}" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                                    <TextBlock Text="{Binding Team}" Style="{StaticResource MutedText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal"><Ellipse Width="6" Height="6" Fill="{Binding ConnectionColor}" Margin="0,0,7,0" /><TextBlock Text="{Binding Connection}" FontSize="12" Foreground="{Binding ConnectionColor}" /></StackPanel>
+                                                <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                    <Border Background="{Binding StatusBackground}" CornerRadius="4" Padding="8,5" HorizontalAlignment="Left" ToolTip="{Binding BackupDetail}"><TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontSize="11" /></Border>
+                                                    <ProgressBar Value="{Binding Progress, Mode=OneWay}" Margin="0,6,0,0" Visibility="{Binding IsUploading, Converter={StaticResource BoolVisibility}}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="{Binding CloudDetail}">
+                                                    <Border Background="{Binding CloudBackground}" CornerRadius="4" Padding="8,5" HorizontalAlignment="Left"><TextBlock Text="{Binding CloudStatus}" Foreground="{Binding CloudColor}" FontSize="11" /></Border>
+                                                    <ProgressBar Value="{Binding CloudPercent, Mode=OneWay}" Margin="0,6,0,0" Visibility="{Binding CloudActive, Converter={StaticResource BoolVisibility}}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="5" Text="{Binding LastBackup}" Foreground="#778492" FontSize="11" TextWrapping="Wrap" Margin="0,0,10,0" ToolTip="{Binding LastSeenText}" />
+                                                <TextBlock Grid.Column="6" Text="{Binding Size}" FontSize="12" Foreground="#657483" />
+                                                <StackPanel Grid.Column="7" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                    <Button Content="Backup Now" Command="{Binding DataContext.BackupOneCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="7,6" FontSize="10" ToolTip="Create a local backup on this client" />
+                                                    <Button Content="×" Click="RevokeComputer_Click" Style="{StaticResource TextButton}" Padding="6" FontSize="13" ToolTip="Revoke this client's pairing credentials" />
+                                                    <Button Content="↗" Click="Details_Click" Style="{StaticResource TextButton}" Margin="5,0,0,0" ToolTip="View computer details" AutomationProperties.Name="View computer details" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding EmptyInventoryText}" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="12,30" Visibility="{Binding EmptyTableVisibility}" TextWrapping="Wrap" />
+                            <Grid Margin="21,11">
+                                <TextBlock Text="{Binding SelectionText}" Style="{StaticResource MutedText}" />
+                                <TextBlock Text="Live paired devices · heartbeat every 5 seconds" Style="{StaticResource MutedText}" HorizontalAlignment="Right" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Visibility="{Binding ShowComputerTable, Converter={StaticResource BoolVisibility}}" Margin="0,0,0,20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.25*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Card}" Padding="18,16">
+                            <StackPanel>
+                                <DockPanel><Button DockPanel.Dock="Right" Content="Cancel local jobs" Style="{StaticResource TextButton}" Command="{Binding CancelCommand}" Padding="0" FontSize="11" AutomationProperties.AutomationId="CancelBackups" /><TextBlock Text="Local backup queue" FontSize="15" FontWeight="SemiBold" /></DockPanel>
+                                <TextBlock Text="{Binding QueueText}" Style="{StaticResource MutedText}" Margin="0,7,0,0" />
+                                <StackPanel Margin="0,12,0,0" Visibility="{Binding EmptyQueueVisibility}">
+                                    <TextBlock Text="Configure folders on each client, then select Backup Now. Archives stay on that client's local destination." Style="{StaticResource MutedText}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding Jobs}" Margin="0,8,0,0"><ItemsControl.ItemTemplate><DataTemplate>
+                                    <StackPanel Margin="0,8"><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding ProgressText}" FontSize="11" Foreground="{Binding StatusColor}" /><TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" /></DockPanel><ProgressBar Value="{Binding Progress, Mode=OneWay}" Margin="0,8,0,0" /></StackPanel>
+                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource Card}" Background="#F0F6F4" BorderBrush="#DCE9E3" Padding="18,16">
+                            <StackPanel>
+                                <DockPanel><TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE753;" FontSize="22" Foreground="#4D8B7B" /><TextBlock Text="Google Drive" FontSize="15" FontWeight="SemiBold" /></DockPanel>
+                                <TextBlock Text="{Binding DriveSummary}" TextWrapping="Wrap" Foreground="#6F837C" FontSize="12" Margin="0,9,0,0" />
+                                <ItemsControl ItemsSource="{Binding CloudJobs}"><ItemsControl.ItemTemplate><DataTemplate>
+                                    <StackPanel Margin="0,12,0,0" ToolTip="{Binding CloudDetail}"><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding CloudStatus}" FontSize="11" Foreground="{Binding CloudColor}" /><TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" /></DockPanel><ProgressBar Value="{Binding CloudPercent, Mode=OneWay}" Margin="0,7,0,0" /></StackPanel>
+                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                <Button Content="Client sign-in instructions  →" Style="{StaticResource TextButton}" Command="{Binding OpenSettingsCommand}" HorizontalAlignment="Left" Padding="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,18" Visibility="{Binding IsActivity, Converter={StaticResource BoolVisibility}}">
+                        <StackPanel>
+                            <TextBlock Text="Local &amp; cloud backup history" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock Text="Latest 100 jobs. Local archive paths refer to the client PC; cloud completion is confirmed separately." Style="{StaticResource MutedText}" Margin="0,8,0,15" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding BackupHistory}"><ItemsControl.ItemTemplate><DataTemplate>
+                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,14">
+                                    <StackPanel><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding Time}" Style="{StaticResource MutedText}" /><TextBlock FontWeight="SemiBold"><Run Text="{Binding Computer}" /><Run Text="  ·  Local: " /><Run Text="{Binding State}" /></TextBlock></DockPanel><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,0" /><TextBlock Text="{Binding ArchivePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource Accent}" Margin="0,5,0,0" /><TextBlock Margin="0,10,0,0" FontWeight="SemiBold"><Run Text="Cloud: " /><Run Text="{Binding CloudState}" /></TextBlock><TextBlock Text="{Binding CloudDetail}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0" /><Button Content="Open in Google Drive ↗" Click="OpenCloud_Click" CommandParameter="{Binding CloudLink}" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Padding="0,8,0,0" Visibility="{Binding HasCloudLink, Converter={StaticResource BoolVisibility}}" /></StackPanel>
+                                </Border>
+                            </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Visibility="{Binding IsActivity, Converter={StaticResource BoolVisibility}}">
+                        <StackPanel><TextBlock Text="Recent activity" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Real host and client connection events from this session. Newest events appear first." Style="{StaticResource MutedText}" Margin="0,7,0,15" TextWrapping="Wrap" /><ItemsControl ItemsSource="{Binding Activities}" ItemTemplate="{StaticResource ActivityTemplate}" /></StackPanel>
+                    </Border>
+
+                    <StackPanel Visibility="{Binding IsSettings, Converter={StaticResource BoolVisibility}}">
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="Host &amp; client pairing" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding HostStatus}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,12,0,6" />
+                                <TextBlock Text="{Binding HostEndpoint}" FontFamily="Consolas" />
+                                <TextBlock Text="The host must stay open. Clients connect outbound to this host; allow its TCP port on your host's Private/Domain firewall for LAN use." Foreground="{StaticResource Muted}" Margin="0,12,0,15" TextWrapping="Wrap" />
+                                <Button Content="Pair a computer…" Click="AddComputer_Click" IsEnabled="{Binding CanPair}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" />
+                                <TextBlock Text="Host certificate fingerprint (SHA-256)" FontWeight="SemiBold" Margin="0,20,0,7" />
+                                <TextBox Text="{Binding HostFingerprint, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
+                                <TextBlock Text="Protected host data" Style="{StaticResource MutedText}" Margin="0,15,0,5" />
+                                <TextBox Text="{Binding HostDataDirectory, Mode=OneWay}" IsReadOnly="True" FontSize="11" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <DockPanel><Border DockPanel.Dock="Right" Background="#F0F2F5" CornerRadius="4" Padding="10,5"><TextBlock Text="PER CLIENT" FontSize="10" Foreground="#73808E" FontWeight="SemiBold" /></Border><TextBlock Text="Google Drive connection" FontSize="17" FontWeight="SemiBold" /></DockPanel>
+                                <TextBlock Text="Google sign-in happens on each client. Tokens stay protected on that client; the host receives account and upload status only." Foreground="{StaticResource Muted}" Margin="0,12,0,18" TextWrapping="Wrap" />
+                                <Border Background="#F7F9FA" CornerRadius="7" Padding="16"><TextBlock Text="AutoBack Backups / {Computer name}-{Agent ID} / {Backup ZIP}" FontFamily="Consolas" Foreground="#497567" TextWrapping="Wrap" /></Border>
+                                <TextBlock Text="On each client" FontWeight="SemiBold" Margin="0,20,0,10" />
+                                <TextBlock Text="1. Set up a Google Cloud Desktop OAuth client using docs/GOOGLE-DRIVE-SETUP.md.&#10;2. Stop the agent, then run drive-connect and choose the downloaded OAuth JSON.&#10;3. Sign in to Google in the browser, then start the agent again.&#10;4. Completed local backups upload directly; the host shows local and cloud results separately." Foreground="#6F7E8C" LineHeight="25" TextWrapping="Wrap" />
+                                <TextBox IsReadOnly="True" FontFamily="Consolas" Margin="0,14,0,0" Text=".\AutoBack.Agent.exe drive-connect&#10;.\AutoBack.Agent.exe run" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
+                                <TextBlock Text="Backup schedule" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="Preview a daily schedule. Changes stay in this session and do not run automatic backups." Style="{StaticResource MutedText}" Margin="0,9,0,22" TextWrapping="Wrap" />
+                                <CheckBox Content="Enable daily backups (demo)" IsChecked="{Binding ScheduleEnabled}" AutomationProperties.AutomationId="ScheduleEnabled" />
+                                <StackPanel Orientation="Horizontal" Margin="0,18,0,20"><TextBlock Text="Every day at" Margin="0,0,15,0" /><TextBox Text="{Binding ScheduleTime, UpdateSourceTrigger=PropertyChanged}" Width="92" MaxLength="5" AutomationProperties.Name="Daily backup time in 24-hour format" AutomationProperties.AutomationId="ScheduleTime" /><TextBlock Text="24-hour time · client local time" Style="{StaticResource MutedText}" Margin="14,0,0,0" /></StackPanel>
+                                <Button Content="Save demo schedule" Command="{Binding SaveScheduleCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" AutomationProperties.AutomationId="SaveSchedule" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Protection &amp; recovery" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Local ZIP versions and SHA-256 archive verification are available. Encrypted archives, retention policies, scheduled retries, and a verified restore flow are planned for later milestones." Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="22" /></StackPanel></Border>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+            <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="20,0">
+                <DockPanel><TextBlock DockPanel.Dock="Right" Text="AutoBack / Local + cloud" FontSize="10" Foreground="#8C98A4" Margin="20,0,0,0" /><TextBlock Text="{Binding Notice}" Foreground="#657B75" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Notice}" AutomationProperties.AutomationId="StatusNotice" /></DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

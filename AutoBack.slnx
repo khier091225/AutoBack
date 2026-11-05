@@ -1,0 +1,15 @@
+<Solution>
+  <Project Path="AutoBack.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/AutoBack.Connection/AutoBack.Connection.csproj" />
+    <Project Path="src/AutoBack.Agent/AutoBack.Agent.csproj" />
+    <Project Path="src/AutoBack.Backup/AutoBack.Backup.csproj" />
+    <Project Path="src/AutoBack.Drive/AutoBack.Drive.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AutoBack.Connection.Tests/AutoBack.Connection.Tests.csproj" />
+    <Project Path="tests/AutoBack.Desktop.Tests/AutoBack.Desktop.Tests.csproj" />
+    <Project Path="tests/AutoBack.Backup.Tests/AutoBack.Backup.Tests.csproj" />
+    <Project Path="tests/AutoBack.Drive.Tests/AutoBack.Drive.Tests.csproj" />
+  </Folder>
+</Solution>

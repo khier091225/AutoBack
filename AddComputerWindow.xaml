@@ -1,0 +1,26 @@
+<Window x:Class="AutoBack.AddComputerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pair a computer" Width="590" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="White" Style="{StaticResource {x:Type Window}}">
+    <StackPanel Margin="30">
+        <TextBlock Text="Connect your next computer." FontSize="23" FontWeight="SemiBold" />
+        <TextBlock Text="Create a single-use invitation, transfer it directly to the client, then pair the agent there. The invitation expires in five minutes." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,22" LineHeight="21" />
+        <TextBlock Text="Host address reachable from the client" FontWeight="SemiBold" Margin="0,0,0,7" />
+        <TextBox x:Name="HostInput" MaxLength="253" AutomationProperties.AutomationId="PairingHostAddress" />
+        <TextBlock x:Name="EndpointText" Style="{StaticResource MutedText}" Margin="0,7,0,20" TextWrapping="Wrap" />
+        <Button Content="Save pairing invitation…" Click="Export_Click" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" AutomationProperties.AutomationId="ExportPairingInvitation" />
+        <TextBlock x:Name="ResultText" Foreground="#287D6C" TextWrapping="Wrap" Margin="0,16,0,16" AutomationProperties.AutomationId="PairingResult" />
+        <Border Background="#F4F7F8" CornerRadius="7" Padding="15">
+            <StackPanel>
+                <TextBlock Text="On the client PC" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <TextBlock Text="Place the invitation beside the published agent. For a first test, run:" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                <TextBox x:Name="CommandsText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" Background="White" BorderBrush="{StaticResource Line}" Text=".\AutoBack.Agent.exe pair --invite .\client.autoback-invite&#10;.\AutoBack.Agent.exe run" />
+                <TextBlock Text="For automatic startup as a Windows Service, follow docs/CONNECTION-SETUP.md. Creating a new invitation invalidates the previous one." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,11,0,0" />
+            </StackPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,23,0,0">
+            <Button Content="Cancel invitation" Click="CancelInvitation_Click" Margin="0,0,10,0" />
+            <Button Content="Done" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -1,0 +1,135 @@
+# Google Drive setup — AutoBack 0.4
+
+Ang client PC mismo ang mag-a-upload sa Google Drive matapos gumawa ng successful local backup. Magkahiwalay ang local at cloud result sa host. Hindi ipinapadala sa host ang Google tokens o ang backup ZIP.
+
+**Current validation:** automated tests use simulated Google HTTP responses and real local ZIPs/host connections. Kailangan pa ang OAuth setup at isang live upload test sa sarili mong Google account bago i-confirm ang office deployment.
+
+## A. One-time Google Cloud setup
+
+1. Buksan ang [Google Cloud Console](https://console.cloud.google.com/). Gumawa o pumili ng project, halimbawa **AutoBack**.
+2. Sa **APIs & Services → Library**, hanapin ang **Google Drive API** at click **Enable**.
+3. Buksan ang **Google Auth platform**. Sa **Branding**, ilagay ang app name **AutoBack**, support email, at contact email.
+4. Sa **Audience**, gamitin ang **External** kung regular Gmail ang account. Para sa eligible Google Workspace organization, maaaring **Internal** ang naaangkop. Sa External/Testing, idagdag sa **Test users** ang Google account na tatanggap ng backups.
+5. Sa **Data Access**, idagdag ang scope `https://www.googleapis.com/auth/drive.file` kung hinihingi ng setup. AutoBack requests this scope at sign-in; hindi nito kailangan ang full-Drive scope.
+6. Sa **Clients → Create client**, piliin ang application type na **Desktop app**. Pangalanan itong **AutoBack Windows Agent**.
+7. I-download ang client JSON. Itago ito sa labas ng source repository, halimbawa `C:\AutoBackSetup\desktop-client.json`.
+
+Gamitin ang parehong Desktop client JSON para sa office client PCs na gumagamit ng parehong AutoBack app. Bawat PC ay magse-sign in at magkakaroon ng sariling refresh token. Huwag gumawa ng Web application client, API key, o service-account JSON para sa flow na ito. Ang mga Google Console steps ay sumusunod sa [official Desktop client setup](https://developers.google.com/workspace/drive/api/quickstart/go#authorize_credentials_for_a_desktop_application).
+
+`drive.file` limits access to files created/opened with this app; ginagamit ng AutoBack ang sarili nitong backup folders. Tingnan ang [Google scope documentation](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+
+**Testing mode:** External apps in Testing receive refresh grants that expire after seven days for these scopes. Bago unattended office use, ayusin ang appropriate Production/Internal publishing setup at organization policies. Maaari pa ring ma-revoke o mag-expire ang authorization; ipapakita ng agent ang **Needs sign-in**. [Google refresh-token expiration rules](https://developers.google.com/identity/protocols/oauth2/#expiration).
+
+## B. Update both host and client
+
+Kailangan ang version **0.4 / protocol 3** sa host at agent. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
+
+Sa development PC, kung kailangan mag-publish:
+
+```powershell
+dotnet publish AutoBack.csproj -c Release -r win-x64 --self-contained true -o artifacts/host-win-x64
+dotnet publish src/AutoBack.Agent/AutoBack.Agent.csproj -c Release -r win-x64 --self-contained true -o artifacts/agent-win-x64
+```
+
+Isara muna ang lumang host at ihinto ang lumang agent/service bago palitan ang executable folders. Kopyahin ang **buong** agent folder papunta sa client.
+
+## C. Connect Google on a console client
+
+1. I-pair ang agent at i-configure ang source/destination folders kung hindi pa ito nagagawa. Tingnan ang [pairing guide](CONNECTION-SETUP.md) at [local backup guide](LOCAL-BACKUP.md).
+2. Ihinto ang running agent gamit ang **Ctrl+C**. Google account changes require the agent to be stopped.
+3. Sa agent folder sa client PC:
+
+```powershell
+.\AutoBack.Agent.exe drive-connect --client-secrets "C:\AutoBackSetup\desktop-client.json"
+```
+
+Puwede ring `drive-connect` lang: may JSON file picker. Bubukas ang system browser; piliin ang Google account na tatanggap ng backups at payagan ang requested Drive access. Ang callback ay automatic sa `127.0.0.1`; wala kang kailangang i-copy/paste na authorization code. Ang app ay gumagamit ng PKCE at random state ayon sa [Google Desktop OAuth flow](https://developers.google.com/identity/protocols/oauth2/native-app).
+
+4. Kapag lumabas ang connected account, tingnan at simulan ang agent:
+
+```powershell
+.\AutoBack.Agent.exe drive-status
+.\AutoBack.Agent.exe run
+```
+
+Kung gumamit ng `--data-dir` sa pairing, gamitin ang parehong option sa lahat ng commands. Google credentials ay naka-DPAPI encryption sa client data store; short-lived access tokens stay in memory.
+
+**Existing backups:** pagka-start ng connected agent, pati previously completed local backups na wala pang upload record ay automatically ma-queue. Pending uploads are bound to the Google account/client ID where they were first queued. Hindi ililipat sa ibang Google account ang dating pending uploads kapag nagpalit ng sign-in; kailangan ang original account para ma-resume iyon. New backups may use the newly connected account.
+
+## D. Connect Google for Windows Service mode
+
+Console mode and service mode have separate configuration. Sa elevated PowerShell **sa client PC**:
+
+```powershell
+Stop-Service AutoBackAgent
+& "$env:ProgramFiles\AutoBack Agent\AutoBack.Agent.exe" drive-connect --machine --client-secrets "C:\AutoBackSetup\desktop-client.json"
+& "$env:ProgramFiles\AutoBack Agent\AutoBack.Agent.exe" drive-status --machine
+Start-Service AutoBackAgent
+```
+
+Sign-in happens in your interactive browser; the background LocalService worker later uses machine-scoped protected credentials. Existing restricted ACLs allow only SYSTEM, Administrators, and LocalService to read the service's credential store. Hindi magbubukas ng browser ang service habang nagba-backup. Source/destination folder permissions for LocalService are still required.
+
+## E. First live upload test
+
+1. Gumamit muna ng maliit na test source folder, at panatilihing bukas ang host at running ang client.
+2. Sa host, click **Backup Now**.
+3. Hintayin ang **Local complete**. Dapat may actual ZIP sa local destination.
+4. Sa **Cloud Upload**, makikita ang Queued → Uploading → Cloud complete. Google Drive must confirm the uploaded size/checksum before completion is reported.
+5. Sa **Activity**, may sariling local result, cloud result, at **Open in Google Drive** button para sa confirmed upload.
+6. Sa signed-in account's My Drive, hanapin:
+
+```text
+AutoBack Backups/
+  {Computer name}-{Agent ID}/
+    {Job ID}-backup-{UTC timestamp}.zip
+```
+
+Ang root folder ay nire-reuse kapag nakikita ng parehong OAuth app/account; bawat agent ay may sariling subfolder. Shared Drives and an arbitrary existing destination folder picker are not included in this milestone.
+
+**Cloud complete is a confirmed upload, not a complete restore drill.** Download/restore workflow at recovery verification ang milestone 4. ZIPs are still unencrypted; encryption and retention remain milestone 5.
+
+## F. Interrupted uploads, errors, and retry
+
+- One upload at a time per client. Host-wide bandwidth/concurrency policies are later work.
+- Uploads use 1 MiB chunks, server-confirmed offsets, and encrypted session checkpoints. After interruption/restart, the agent checks the saved session and resumes. An expired session restarts using the same preallocated Drive file ID, preventing duplicate files from lost completion responses. This follows [Google's resumable upload protocol](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
+- Temporary network/rate-limit/server errors retry with saved backoff. Local success remains unchanged.
+- **Needs sign-in:** stop the agent/service, run `drive-connect` again for the original account, then start it. Authorization failures wait for a new grant rather than continuously refreshing a rejected one.
+- **Failed:** Activity shows a bounded error description. Free Drive space or fix the underlying issue, then retry from the stopped client:
+
+```powershell
+.\AutoBack.Agent.exe drive-retry
+.\AutoBack.Agent.exe run
+```
+
+For service mode, stop the service, run `drive-retry --machine` as administrator using the installed executable, then restart the service.
+
+- `drive-retry` reuses the local archive and upload identity. It does not make another local backup or overwrite an unexpected cloud file.
+- A missing/modified/corrupt local archive or a mismatching cloud checksum is not counted as cloud success. If the archive changed after upload began, create a new backup instead of overwriting the existing version.
+- If a backup folder was trashed/moved unexpectedly, restore it in Google Drive before retrying. AutoBack does not delete cloud files or modify sharing permissions.
+- Closing the host may prevent status reporting, but an already running client upload can finish and save its result. An explicit host authorization rejection pauses uploads.
+
+## G. Disconnect a client
+
+Stop the agent, then:
+
+```powershell
+.\AutoBack.Agent.exe drive-disconnect
+```
+
+Use `--machine` for the service store. Local credentials are removed; existing local/cloud backups remain. This does **not** revoke the app's Google grant for other clients. To revoke access at Google, manage the app in your Google account's connected-app settings; that may affect other PCs sharing the same app/account.
+
+## Troubleshooting
+
+| Problem | Check |
+| --- | --- |
+| Google blocks sign-in | Correct Cloud project, Desktop client type, consent setup, test-user email, and Workspace admin policy. |
+| JSON rejected | Use the downloaded Desktop app JSON with an `installed` section, not a Web client/service account/API key. |
+| Account changes rejected while running | Stop the console agent/service first; account management uses the agent instance lock. |
+| Local complete, cloud not connected | Run `drive-connect` on that client with the same data scope as `run`. |
+| Needs sign-in after a week | External/Testing refresh-grant expiry; review publishing setup and reconnect. |
+| Client switched Google account | Old pending uploads require their original account; new jobs can bind to the new account. |
+| Drive storage full / quota error | Resolve storage/account limits, then run `drive-retry`. |
+| Local file missing or changed | Keep the original archive available for resume, or start a fresh backup job. |
+| No cloud progress on host | Check agent connectivity and client logs. Last reported progress is retained on disconnect. |
+
+A live successful upload has not yet been verified in your Google environment. Follow section E after creating the Desktop OAuth client to complete that validation.

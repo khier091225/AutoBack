@@ -1,0 +1,135 @@
+using AutoBack.Connection;
+
+namespace AutoBack.Backup;
+
+public sealed record LocalJob(BackupCommand Command, BackupReport Report, bool Acknowledged = false);
+public sealed record JobJournal(List<LocalJob> Jobs);
+
+/// <summary>Runs one backup at a time while transport polling continues independently.</summary>
+public sealed class BackupCoordinator : IAsyncDisposable
+{
+    private readonly object _gate = new();
+    private readonly ProtectedStore _store;
+    private readonly Guid _agentId;
+    private JobJournal _journal;
+    private Task? _task;
+    private CancellationTokenSource? _cancellation;
+    private bool _stopping;
+
+    public BackupCoordinator(ProtectedStore store, Guid agentId)
+    {
+        _store = store;
+        _agentId = agentId;
+        _journal = store.Load<JobJournal>("jobs.dat") ?? new([]);
+        if (_journal.Jobs is null) throw new InvalidDataException("The local job journal is invalid.");
+        var recovered = _journal.Jobs.Select(j => BackupStates.Terminal(j.Report.State) ? j : j with
+        {
+            Report = j.Report with { Sequence = j.Report.Sequence + 1, State = "Failed", Detail = "Backup interrupted by an agent restart. Start a new job; no completion was confirmed." },
+            Acknowledged = false
+        }).ToList();
+        Save(new(recovered));
+    }
+
+    public BackupPlan? LoadPlan() => _store.Load<BackupPlan>("backup-plan.dat");
+    public bool IsBusy { get { lock (_gate) return _task is { IsCompleted: false }; } }
+    public bool Faulted { get { lock (_gate) return _task?.IsFaulted == true; } }
+    public IReadOnlyList<LocalJob> CompletedJobs()
+    {
+        lock (_gate) return _journal.Jobs.Where(j => j.Report.State == "Completed").ToArray();
+    }
+    public BackupReport? NextReport()
+    {
+        lock (_gate) return _journal.Jobs.FirstOrDefault(j => !j.Acknowledged)?.Report;
+    }
+
+    public void Acknowledge(Guid? jobId, long sequence)
+    {
+        if (jobId is null) return;
+        lock (_gate)
+        {
+            var job = _journal.Jobs.SingleOrDefault(j => j.Command.JobId == jobId);
+            if (job is null || job.Acknowledged || sequence < job.Report.Sequence || !BackupStates.Terminal(job.Report.State)) return;
+            Save(new(_journal.Jobs.Select(j => j == job ? j with { Acknowledged = true } : j).ToList()));
+        }
+    }
+
+    public void Handle(BackupCommand? command)
+    {
+        if (command is null) return;
+        lock (_gate)
+        {
+            if (_stopping) return;
+            var existing = _journal.Jobs.SingleOrDefault(j => j.Command.JobId == command.JobId);
+            if (existing is not null)
+            {
+                if (existing.Acknowledged)
+                    Save(new(_journal.Jobs.Select(j => j == existing ? j with { Acknowledged = false } : j).ToList()));
+                if (command.CancelRequested && !BackupStates.Terminal(existing.Report.State)) _cancellation?.Cancel();
+                return;
+            }
+            if (_task is { IsCompleted: false }) return;
+            var report = new BackupReport(command.JobId, 1, command.CancelRequested ? "Cancelled" : "Preparing", 0, 0, 0, 0, 0,
+                command.CancelRequested ? "Cancelled before the backup started." : "Client accepted the backup request.");
+            Save(new([.. _journal.Jobs, new LocalJob(command, report)]));
+            if (command.CancelRequested) return;
+            _cancellation?.Dispose();
+            _cancellation = new();
+            var token = _cancellation.Token;
+            _task = Task.Run(() => ExecuteAsync(command, token));
+        }
+    }
+
+    public void CancelCurrent()
+    {
+        lock (_gate) _cancellation?.Cancel();
+    }
+
+    private async Task ExecuteAsync(BackupCommand command, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var plan = LoadPlan() ?? throw new InvalidOperationException("Source and destination folders are not configured on this client.");
+            var result = await new LocalBackupEngine().CreateAsync(plan, _agentId, command,
+                progress => Update(command.JobId, old => old with { State = progress.State, Percent = progress.Percent,
+                    BytesCopied = progress.BytesCopied, TotalBytes = progress.TotalBytes, FilesCopied = progress.FilesCopied,
+                    TotalFiles = progress.TotalFiles, Detail = progress.Detail }), cancellationToken);
+            Update(command.JobId, old => old with { State = "Completed", Percent = 100, BytesCopied = result.Bytes,
+                TotalBytes = result.Bytes, FilesCopied = result.Files, TotalFiles = result.Files, ArchivePath = result.ArchivePath,
+                Detail = "Local backup completed; the saved ZIP passed SHA-256 verification." });
+        }
+        catch (OperationCanceledException)
+        {
+            Update(command.JobId, old => old with { State = "Cancelled", Detail = "Backup cancelled before a complete archive was published." });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or InvalidDataException or System.Security.Cryptography.CryptographicException)
+        {
+            var message = new string(ex.Message.Select(c => char.IsControl(c) ? ' ' : c).ToArray());
+            if (message.Length > 1000) message = message[..1000];
+            Update(command.JobId, old => old with { State = "Failed", Detail = message });
+        }
+    }
+
+    private void Update(Guid id, Func<BackupReport, BackupReport> update)
+    {
+        lock (_gate)
+        {
+            var job = _journal.Jobs.Single(j => j.Command.JobId == id);
+            var report = update(job.Report) with { Sequence = job.Report.Sequence + 1 };
+            Save(new(_journal.Jobs.Select(j => j == job ? j with { Report = report, Acknowledged = false } : j).ToList()));
+        }
+    }
+
+    private void Save(JobJournal journal)
+    {
+        _store.Save("jobs.dat", journal);
+        _journal = journal;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Task? task;
+        lock (_gate) { _stopping = true; _cancellation?.Cancel(); task = _task; }
+        if (task is not null) await task;
+        _cancellation?.Dispose();
+    }
+}
