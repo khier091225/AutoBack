@@ -20,14 +20,18 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         if (!File.Exists(archivePath)) throw new DriveException(DriveFailure.Permanent, "The local archive is missing. Restore the local file or create a new backup.");
         await using var input = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        using (var archive = ZipFile.OpenRead(archivePath))
+        var encrypted = Path.GetExtension(archivePath).Equals(".abk", StringComparison.OrdinalIgnoreCase);
+        var mime = encrypted ? "application/octet-stream" : "application/zip";
+        var vault = EncryptionVault.Load(store);
+        using (var archiveInput = ArchiveFile.OpenRead(archivePath, vault.Resolve))
+        using (var archive = new ZipArchive(archiveInput, ZipArchiveMode.Read))
         {
             var entry = archive.GetEntry("manifest.json") ?? throw new InvalidDataException("The local ZIP has no AutoBack manifest.");
             await using var manifestStream = entry.Open();
             var manifest = await JsonSerializer.DeserializeAsync<BackupManifest>(manifestStream, Protocol.Json, cancellationToken)
                 ?? throw new InvalidDataException("The local backup manifest is empty.");
             if (manifest.JobId != jobId || manifest.AgentId != agentId) throw new InvalidDataException("The local archive belongs to a different backup job.");
-            await LocalBackupEngine.VerifyAsync(archivePath, manifest, cancellationToken);
+            await LocalBackupEngine.VerifyAsync(archivePath, manifest, cancellationToken, vault.Resolve);
         }
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
@@ -50,7 +54,7 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         {
             var metadata = new Dictionary<string, object>
             {
-                ["id"] = state.FileId!, ["name"] = $"{jobId:N}-{Path.GetFileName(archivePath)}", ["mimeType"] = "application/zip",
+                ["id"] = state.FileId!, ["name"] = $"{jobId:N}-{Path.GetFileName(archivePath)}", ["mimeType"] = mime,
                 ["parents"] = new[] { folders.ClientId },
                 ["appProperties"] = new Dictionary<string, string>
                 {
@@ -61,7 +65,7 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
             {
                 var request = new HttpRequestMessage(HttpMethod.Post, "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable");
                 request.Content = JsonContent.Create(metadata);
-                request.Headers.TryAddWithoutValidation("X-Upload-Content-Type", "application/zip");
+                request.Headers.TryAddWithoutValidation("X-Upload-Content-Type", mime);
                 request.Headers.TryAddWithoutValidation("X-Upload-Content-Length", input.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 return request;
             }, cancellationToken, 409);
@@ -123,7 +127,7 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
     {
         if (!remote.Trashed && remote.Size == state.Length && remote.Md5 is null)
             throw new DriveException(DriveFailure.Retryable, "Waiting for Google Drive to provide the uploaded file checksum.");
-        if (remote.Id != state.FileId || remote.Trashed || remote.MimeType != "application/zip" || remote.Size != state.Length ||
+        if (remote.Id != state.FileId || remote.Trashed || remote.MimeType is not ("application/zip" or "application/octet-stream") || remote.Size != state.Length ||
             !string.Equals(remote.Md5, state.Md5, StringComparison.OrdinalIgnoreCase) ||
             (remote.Sha256 is not null && !string.Equals(remote.Sha256, state.Sha256, StringComparison.OrdinalIgnoreCase)) ||
             !remote.Parents.Contains(folderId) || remote.Properties.GetValueOrDefault("autobackJob") != jobId.ToString("N") ||

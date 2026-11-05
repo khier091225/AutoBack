@@ -10,25 +10,43 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        try { await RunWorkerAsync(stoppingToken); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        catch
+        {
+            logger.LogCritical("Agent stopped after a fatal configuration or journal failure. Check protected storage and application permissions.");
+            Environment.ExitCode = 1;
+            // SCM recovery observes an unexpected process exit; normal service stops do not trigger retries.
+            if (Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()) Environment.Exit(1);
+            throw;
+        }
+    }
+
+    private async Task RunWorkerAsync(CancellationToken stoppingToken)
+    {
         await using var backups = new BackupCoordinator(store, credentials.AgentId);
         RestoreHistory.RecoverInterrupted(store);
         using var driveHttp = DriveHttp.CreateClient();
         await using var uploads = new CloudUploadCoordinator(store, driveHttp, credentials.AgentId, credentials.Name);
+        await using var maintenance = new AgentMaintenance(store, credentials.AgentId, backups, uploads, driveHttp);
         var failures = 0;
         var wasConnected = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             if (backups.Faulted) throw new InvalidOperationException("The local backup journal could not be updated. Check credential-store disk access before restarting the agent.");
             if (uploads.Faulted) throw new InvalidOperationException("The cloud upload journal could not be updated. Check credential-store disk access before restarting the agent.");
+            if (maintenance.Faulted) throw new InvalidOperationException("The protection journal could not be saved. Check client storage.");
             try
             {
                 var plan = backups.LoadPlan();
-                var response = await client.PollAsync(credentials, plan?.Summary, backups.NextReport(), stoppingToken, uploads.Configuration, uploads.NextReport(), RestoreHistory.Latest(store));
+                var configuration = plan is null ? null : plan.Summary with { Encrypted = EncryptionVault.Load(store).Enabled };
+                var response = await client.PollAsync(credentials, configuration, backups.NextReport(), stoppingToken, uploads.Configuration, uploads.NextReport(), RestoreHistory.Latest(store), maintenance.Summary);
                 backups.Acknowledge(response.AcknowledgedJobId, response.AcknowledgedSequence);
-                backups.Handle(response.Command);
+                if (!maintenance.IsBusy) backups.Handle(response.Command);
                 uploads.Acknowledge(response.AcknowledgedCloudJobId, response.AcknowledgedCloudSequence);
                 uploads.SetHostAuthorized(true);
-                uploads.Tick(backups.CompletedJobs());
+                if (!maintenance.IsBusy) uploads.Tick(backups.CompletedJobs());
+                maintenance.Tick();
                 if (!wasConnected) logger.LogInformation("Connected to host {Host}:{Port} as {Name}.", credentials.Host, credentials.Port, credentials.Name);
                 failures = 0;
                 wasConnected = true;

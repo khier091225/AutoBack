@@ -77,25 +77,29 @@ public sealed record AgentCredentials(string Host, int Port, string CertificateS
 public sealed record AgentRequest(int Version, string Kind, Guid AgentId, string Secret, string? InvitationSecret = null,
     string? Name = null, string? MachineName = null, string? AgentVersion = null,
     BackupConfiguration? Configuration = null, BackupReport? Report = null,
-    CloudConfiguration? CloudConfiguration = null, CloudReport? CloudReport = null, RestoreSummary? LatestRestore = null);
+    CloudConfiguration? CloudConfiguration = null, CloudReport? CloudReport = null, RestoreSummary? LatestRestore = null,
+    AgentProtectionSummary? Protection = null);
 public sealed record HostResponse(bool Accepted, string Message, DateTimeOffset ServerUtc,
     BackupCommand? Command = null, Guid? AcknowledgedJobId = null, long AcknowledgedSequence = 0,
     Guid? AcknowledgedCloudJobId = null, long AcknowledgedCloudSequence = 0);
 public sealed record AgentSnapshot(Guid Id, string Name, string MachineName, string AgentVersion, string Address,
     DateTimeOffset PairedUtc, DateTimeOffset? LastSeenUtc, bool Online,
     BackupConfiguration? Configuration = null, HostBackupJob? LatestJob = null, HostBackupJob? LastSuccessfulJob = null,
-    CloudConfiguration? CloudConfiguration = null, HostBackupJob? LatestCloudJob = null, RestoreSummary? LatestRestore = null);
+    CloudConfiguration? CloudConfiguration = null, HostBackupJob? LatestCloudJob = null, RestoreSummary? LatestRestore = null,
+    AgentProtectionSummary? Protection = null);
 public sealed record ConnectionActivity(DateTimeOffset TimeUtc, string Title, string Description);
 
-public sealed record BackupConfiguration(string PlanId, string Source, string Destination);
-public sealed record BackupCommand(Guid JobId, string PlanId, DateTimeOffset CreatedUtc, bool CancelRequested = false);
+public sealed record BackupConfiguration(string PlanId, string Source, string Destination, bool Encrypted = false, List<string>? Sources = null);
+public sealed record BackupCommand(Guid JobId, string PlanId, DateTimeOffset CreatedUtc, bool CancelRequested = false,
+    Guid? RetryOf = null, int Attempt = 0, bool? Encrypt = null);
 public sealed record BackupReport(Guid JobId, long Sequence, string State, int Percent, long BytesCopied, long TotalBytes,
-    int FilesCopied, int TotalFiles, string Detail, string? ArchivePath = null);
+    int FilesCopied, int TotalFiles, string Detail, string? ArchivePath = null, bool Retryable = false,
+    bool Encrypted = false, string? ArchiveSha256 = null, bool ArchivePruned = false);
 public sealed record HostBackupJob(Guid AgentId, string AgentName, BackupCommand Command, BackupReport Report,
-    DateTimeOffset UpdatedUtc, bool CancelRequested = false, CloudReport? Cloud = null, DateTimeOffset? CloudUpdatedUtc = null);
+    DateTimeOffset UpdatedUtc, bool CancelRequested = false, CloudReport? Cloud = null, DateTimeOffset? CloudUpdatedUtc = null, string Trigger = "Manual");
 public sealed record CloudConfiguration(string State, string Account, string Detail);
 public sealed record CloudReport(Guid JobId, long Sequence, string State, int Percent, long BytesUploaded, long TotalBytes,
-    string Detail, string? FileId = null, string? WebLink = null);
+    string Detail, string? FileId = null, string? WebLink = null, bool Trashed = false);
 public sealed record RestoreSummary(Guid OperationId, string State, string SourceKind, string Destination, int Percent,
     int Files, long Bytes, string Detail, DateTimeOffset UpdatedUtc, Guid? BackupJobId = null);
 
@@ -131,12 +135,17 @@ public static class BackupStates
     public static bool Running(string state) => state is "Preparing" or "Copying" or "Verifying";
     public static bool Valid(string state) => Running(state) || Terminal(state);
     public static bool ValidConfiguration(BackupConfiguration? plan) => plan is null ||
-        (Protocol.ValidSecret(plan.PlanId) && ValidText(plan.Source, 1024) && ValidText(plan.Destination, 1024));
+        (Protocol.ValidSecret(plan.PlanId) && ValidText(plan.Source, 1024) && ValidText(plan.Destination, 1024) &&
+            (plan.Sources is null || (plan.Sources.Count is >= 1 and <= 20 && plan.Sources.All(s => ValidText(s, 1024) && Path.IsPathFullyQualified(s)) &&
+            plan.Sources.Distinct(StringComparer.OrdinalIgnoreCase).Count() == plan.Sources.Count &&
+            plan.Sources.Sum(s => System.Text.Encoding.UTF8.GetByteCount(s)) <= 20_000)));
     public static bool ValidText(string? text, int max) => !string.IsNullOrWhiteSpace(text) && text.Length <= max && !text.Any(char.IsControl);
     public static bool ValidReport(BackupReport report) => report.JobId != Guid.Empty && report.Sequence > 0 &&
         Valid(report.State) && report.Percent is >= 0 and <= 100 && report.BytesCopied >= 0 && report.TotalBytes >= report.BytesCopied &&
         report.FilesCopied >= 0 && report.TotalFiles >= report.FilesCopied && ValidText(report.Detail, 1024) &&
         (report.ArchivePath is null || ValidText(report.ArchivePath, 1024)) &&
+        (report.ArchiveSha256 is null || Protocol.ValidSecret(report.ArchiveSha256)) &&
+        (!report.ArchivePruned || report.State == "Completed") &&
         (report.State != "Completed" || (report.Percent == 100 && report.BytesCopied == report.TotalBytes &&
             report.FilesCopied == report.TotalFiles && report.ArchivePath is not null));
 }

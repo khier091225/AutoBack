@@ -33,9 +33,11 @@ public sealed class BackupCoordinator : IAsyncDisposable
     public BackupPlan? LoadPlan() => _store.Load<BackupPlan>("backup-plan.dat");
     public bool IsBusy { get { lock (_gate) return _task is { IsCompleted: false }; } }
     public bool Faulted { get { lock (_gate) return _task?.IsFaulted == true; } }
+    public IReadOnlyList<LocalJob> AllJobs() { lock (_gate) return _journal.Jobs.ToArray(); }
+    public void MarkPruned(Guid jobId) => Update(jobId, old => old with { ArchivePruned = true });
     public IReadOnlyList<LocalJob> CompletedJobs()
     {
-        lock (_gate) return _journal.Jobs.Where(j => j.Report.State == "Completed").ToArray();
+        lock (_gate) return _journal.Jobs.Where(j => j.Report.State == "Completed" && !j.Report.ArchivePruned).ToArray();
     }
     public BackupReport? NextReport()
     {
@@ -89,13 +91,16 @@ public sealed class BackupCoordinator : IAsyncDisposable
         try
         {
             var plan = LoadPlan() ?? throw new InvalidOperationException("Source and destination folders are not configured on this client.");
+            var key = EncryptionVault.Load(_store).Active;
+            if (command.Encrypt is { } expected && expected != (key is not null)) throw new InvalidOperationException("Encryption settings changed after the backup was queued. Request a new job.");
             var result = await new LocalBackupEngine().CreateAsync(plan, _agentId, command,
                 progress => Update(command.JobId, old => old with { State = progress.State, Percent = progress.Percent,
                     BytesCopied = progress.BytesCopied, TotalBytes = progress.TotalBytes, FilesCopied = progress.FilesCopied,
-                    TotalFiles = progress.TotalFiles, Detail = progress.Detail }), cancellationToken);
+                    TotalFiles = progress.TotalFiles, Detail = progress.Detail }), cancellationToken, key);
             Update(command.JobId, old => old with { State = "Completed", Percent = 100, BytesCopied = result.Bytes,
                 TotalBytes = result.Bytes, FilesCopied = result.Files, TotalFiles = result.Files, ArchivePath = result.ArchivePath,
-                Detail = "Local backup completed; the saved ZIP passed SHA-256 verification." });
+                Encrypted = result.Encrypted, ArchiveSha256 = result.ArchiveSha256,
+                Detail = result.Encrypted ? "Encrypted backup completed; authenticated decryption and SHA-256 verification passed." : "Local backup completed; the saved ZIP passed SHA-256 verification." });
         }
         catch (OperationCanceledException)
         {
@@ -105,7 +110,7 @@ public sealed class BackupCoordinator : IAsyncDisposable
         {
             var message = new string(ex.Message.Select(c => char.IsControl(c) ? ' ' : c).ToArray());
             if (message.Length > 1000) message = message[..1000];
-            Update(command.JobId, old => old with { State = "Failed", Detail = message });
+            Update(command.JobId, old => old with { State = "Failed", Detail = message, Retryable = ex is IOException });
         }
     }
 

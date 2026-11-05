@@ -34,7 +34,7 @@ public sealed class DriveDownloader(ProtectedStore store, HttpClient http)
         var api = new DriveApi(http, account, identity.Key);
         var remote = await api.GetFileAsync(fileId, cancellationToken)
             ?? throw new DriveException(DriveFailure.Permanent, "The Google Drive backup is missing or unavailable to this account.");
-        if (remote.Id != fileId || remote.Trashed || remote.MimeType != "application/zip" || remote.Size <= 0 || remote.Size > maxBytes ||
+        if (remote.Id != fileId || remote.Trashed || remote.MimeType is not ("application/zip" or "application/octet-stream") || remote.Size <= 0 || remote.Size > maxBytes ||
             !Protocol.ValidSecret(remote.Properties.GetValueOrDefault("autobackSha256")) ||
             !Guid.TryParseExact(remote.Properties.GetValueOrDefault("autobackJob"), "N", out var jobId) || jobId == Guid.Empty ||
             !Guid.TryParseExact(remote.Properties.GetValueOrDefault("autobackAgent"), "N", out var agentId) || agentId == Guid.Empty)

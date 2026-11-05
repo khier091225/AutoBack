@@ -1,13 +1,20 @@
 using AutoBack.Connection;
+using System.Text.Json;
 
 namespace AutoBack.Backup;
 
-public sealed record BackupPlan(string Source, string Destination)
+public sealed record BackupPlan(string Source, string Destination, List<string>? SelectedSources = null)
 {
-    public string PlanId => Protocol.Hash($"v1|{Source.ToUpperInvariant()}|{Destination.ToUpperInvariant()}");
-    public BackupConfiguration Summary => new(PlanId, Source, Destination);
+    public const string MultipleSourcesGuard = "Multiple source folders require AutoBack 0.7 or newer";
+    public IReadOnlyList<string> Sources => SelectedSources ?? (IReadOnlyList<string>)[Source];
+    public string PlanId => SelectedSources is null ? Protocol.Hash($"v1|{Source.ToUpperInvariant()}|{Destination.ToUpperInvariant()}")
+        : Protocol.Hash("v2|" + JsonSerializer.Serialize(Sources.Select(s => s.ToUpperInvariant())) + "|" + Destination.ToUpperInvariant());
+    public BackupConfiguration Summary => new(PlanId, SelectedSources is null ? Source : $"{Sources.Count} selected folders", Destination, Sources: Sources.ToList());
 
     public static BackupPlan Create(string source, string destination)
+        => CreateMany([source], destination);
+
+    public static BackupPlan CreateMany(IEnumerable<string> sources, string destination)
     {
         static string Normalize(string path)
         {
@@ -18,25 +25,36 @@ public sealed record BackupPlan(string Source, string Destination)
                 throw new ArgumentException("This milestone supports local folders, not network shares or device paths.");
             return full;
         }
-        var plan = new BackupPlan(Normalize(source), Normalize(destination));
-        if (Contains(plan.Source, plan.Destination) || Contains(plan.Destination, plan.Source))
-            throw new ArgumentException("Source and destination must be separate folders; neither may contain the other.");
+        var selected = sources.Take(21).Select(Normalize).ToList();
+        if (selected.Count is < 1 or > 20) throw new ArgumentException("Choose between 1 and 20 source folders.");
+        var plan = selected.Count == 1 ? new BackupPlan(selected[0], Normalize(destination))
+            : new BackupPlan(MultipleSourcesGuard, Normalize(destination), selected);
         plan.Validate();
         return plan;
     }
 
     public void Validate()
     {
-        if (!BackupStates.ValidText(Source, 1024) || !BackupStates.ValidText(Destination, 1024) ||
-            !Path.IsPathFullyQualified(Source) || !Path.IsPathFullyQualified(Destination) ||
-            Source.StartsWith(@"\\", StringComparison.Ordinal) || Destination.StartsWith(@"\\", StringComparison.Ordinal) ||
-            Path.GetFullPath(Source) != Source || Path.GetFullPath(Destination) != Destination ||
-            Contains(Source, Destination) || Contains(Destination, Source))
+        if (SelectedSources is not null && (SelectedSources.Count is < 2 or > 20 || Source != MultipleSourcesGuard))
+            throw new InvalidDataException("Invalid multi-folder configuration. Use AutoBack 0.7 or newer to configure the client.");
+        if (!ValidPath(Destination) || Sources.Any(s => !ValidPath(s)) || !BackupStates.ValidConfiguration(Summary))
             throw new InvalidDataException("The saved backup configuration is invalid. Configure the folders again.");
-        if (!Directory.Exists(Source)) throw new DirectoryNotFoundException("The configured source folder does not exist or is inaccessible: " + Source);
-        CheckNoReparse(Source);
+        for (var i = 0; i < Sources.Count; i++)
+        {
+            var source = Sources[i];
+            if (Contains(source, Destination) || Contains(Destination, source))
+                throw new ArgumentException("Backup destination and each source must be separate; neither may contain the other.");
+            if (Sources.Take(i).Any(other => Contains(other, source) || Contains(source, other)))
+                throw new ArgumentException("Source folders cannot repeat or overlap. A parent folder already includes all of its subfolders.");
+            if (!Directory.Exists(source)) throw new DirectoryNotFoundException("A selected source folder is missing or inaccessible: " + source);
+            CheckNoReparse(source);
+        }
         CheckNoReparse(Destination);
     }
+
+    private static bool ValidPath(string path) => BackupStates.ValidText(path, 1024) && Path.IsPathFullyQualified(path) &&
+        !path.StartsWith(@"\\", StringComparison.Ordinal) && Path.GetFullPath(path) == path &&
+        new DriveInfo(Path.GetPathRoot(path)!).DriveType != DriveType.Network;
 
     public static bool Contains(string parent, string child) => parent.Equals(child, StringComparison.OrdinalIgnoreCase) ||
         child.StartsWith(Path.EndsInDirectorySeparator(parent) ? parent : parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);

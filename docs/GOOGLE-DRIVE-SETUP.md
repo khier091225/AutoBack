@@ -1,4 +1,4 @@
-# Google Drive setup — AutoBack 0.5
+# Google Drive setup — AutoBack 0.6
 
 Ang client PC mismo ang mag-a-upload sa Google Drive matapos gumawa ng successful local backup. Magkahiwalay ang local at cloud result sa host. Hindi ipinapadala sa host ang Google tokens o ang backup ZIP.
 
@@ -22,7 +22,7 @@ Gamitin ang parehong Desktop client JSON para sa office client PCs na gumagamit 
 
 ## B. Update both host and client
 
-Gamitin ang version **0.5 / protocol 3** sa host at agent para sa uploads at restore reporting. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
+Gamitin ang version **0.6 / protocol 3** sa host at agent para sa uploads, encrypted recovery at protection reporting. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
 
 Sa development PC, kung kailangan mag-publish:
 
@@ -86,7 +86,7 @@ AutoBack Backups/
 
 Ang root folder ay nire-reuse kapag nakikita ng parehong OAuth app/account; bawat agent ay may sariling subfolder. Shared Drives and an arbitrary existing destination folder picker are not included in this milestone.
 
-**Cloud complete confirms the upload.** Para sa restore drill, sundin ang [Restore and verification guide](RESTORE.md): download the selected Drive backup directly to the client and recover into a fresh folder with full SHA-256 readback. ZIPs are still unencrypted; encryption and retention remain milestone 5.
+**Cloud complete confirms the upload.** Para sa restore drill, sundin ang [Restore and verification guide](RESTORE.md): download the selected Drive backup directly to the client and recover into a fresh folder with full SHA-256 readback. Plain ZIPs remain unencrypted; [Automation and rollout](AUTOMATION-ROLLOUT.md) explains authenticated `.abk` encryption/recovery exports and opt-in version retention. Encrypted archives upload as `application/octet-stream` with the same confirmed size/checksum and AutoBack identity checks.
 
 ## F. Interrupted uploads, errors, and retry
 

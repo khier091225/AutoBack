@@ -14,6 +14,9 @@ internal sealed class FakeGoogle : HttpMessageHandler
         public MemoryStream Data { get; } = new();
     }
     private readonly Dictionary<string, object> _files = [];
+    private readonly Dictionary<string, byte[]> _blobs = [];
+    public int TrashedFiles { get; private set; }
+    public bool TamperRetentionMetadata { get; set; }
     private readonly Dictionary<string, Session> _sessions = [];
     private int _id;
     private int _session;
@@ -74,7 +77,23 @@ internal sealed class FakeGoogle : HttpMessageHandler
             return Json(new { id });
         }
         if (uri.AbsolutePath.StartsWith("/drive/v3/files/", StringComparison.Ordinal))
-            return _files.TryGetValue(uri.Segments.Last(), out var file) ? Json(file) : Json(new { }, 404);
+        {
+            var id = uri.Segments.Last();
+            if (!_files.TryGetValue(id, out var file)) return Json(new { }, 404);
+            if (uri.Query == "?alt=media") return new(HttpStatusCode.OK) { Content = new ByteArrayContent(_blobs[id]) };
+            if (request.Method == HttpMethod.Patch)
+            {
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(file))!;
+                metadata["trashed"] = true; _files[id] = metadata; TrashedFiles++;
+                return Json(metadata);
+            }
+            if (TamperRetentionMetadata)
+            {
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(file))!;
+                metadata["md5Checksum"] = new string('0', 32); return Json(metadata);
+            }
+            return Json(file);
+        }
         if (uri.AbsolutePath == "/upload/drive/v3/files" && request.Method == HttpMethod.Post)
         {
             if (FullStorage) return Json(new { error = new { errors = new[] { new { reason = "storageQuotaExceeded" } } } }, 403);
@@ -110,12 +129,13 @@ internal sealed class FakeGoogle : HttpMessageHandler
             var bytes = session.Data.ToArray();
             _files[session.FileId] = new
             {
-                id = session.FileId, mimeType = "application/zip", size = bytes.Length.ToString(), trashed = false,
+                id = session.FileId, mimeType = session.Metadata.GetProperty("mimeType").GetString(), size = bytes.Length.ToString(), trashed = false,
                 md5Checksum = BadChecksum ? new string('0', 32) : Convert.ToHexString(MD5.HashData(bytes)),
                 sha256Checksum = Convert.ToHexString(SHA256.HashData(bytes)),
                 parents = session.Metadata.GetProperty("parents").Deserialize<string[]>(),
                 appProperties = session.Metadata.GetProperty("appProperties").Deserialize<Dictionary<string, string>>()
             };
+            _blobs[session.FileId] = bytes;
             BinaryFiles++;
             if (LoseFinalResponse) { LoseFinalResponse = false; throw new HttpRequestException("Simulated lost final upload response."); }
             return Json(new { id = session.FileId });

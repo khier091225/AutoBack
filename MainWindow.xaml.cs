@@ -62,9 +62,7 @@ public partial class MainWindow : Window
     private void Details_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: Computer computer })
-            MessageBox.Show(this,
-                $"Computer: {computer.Name}\nMachine: {computer.MachineName}\nAgent ID: {computer.Id}\nAgent version: {computer.AgentVersion}\nAddress: {computer.Address}\nConnection: {computer.Connection}\nLast heartbeat: {computer.LastSeenText}\n\nSource on client: {computer.Folder}\nLocal destination: {computer.Destination}\nLast successful local backup: {computer.LastBackup}\nLocal result: {computer.BackupDetail}\nArchive on client: {computer.LatestJob?.Report.ArchivePath ?? "None"}\n\nGoogle Drive account: {computer.CloudAccount}\nCloud result: {computer.CloudStatus}\n{computer.CloudDetail}",
-                "Paired computer details", MessageBoxButton.OK, MessageBoxImage.Information);
+            new ComputerDetailsWindow(computer) { Owner = this }.ShowDialog();
     }
 
     private void OpenCloud_Click(object sender, RoutedEventArgs e)

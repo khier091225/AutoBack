@@ -45,7 +45,7 @@
                     <StackPanel>
                         <TextBlock Text="HOST WORKSPACE" FontSize="10" Foreground="#78909E" FontWeight="SemiBold" />
                         <TextBlock Text="Office backup manager" Foreground="#DDE7EC" Margin="0,8,0,5" />
-                        <TextBlock Text="Verified recovery · v0.5" FontSize="11" Foreground="#8BA1AE" />
+                        <TextBlock Text="Multi-folder backups · v0.7" FontSize="11" Foreground="#8BA1AE" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -147,6 +147,7 @@
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
                                                     <TextBlock Text="{Binding Team}" Style="{StaticResource MutedText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding SourceFolderSummary}" FontSize="10" Foreground="{StaticResource Accent}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding SourceFoldersText}" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal"><Ellipse Width="6" Height="6" Fill="{Binding ConnectionColor}" Margin="0,0,7,0" /><TextBlock Text="{Binding Connection}" FontSize="12" Foreground="{Binding ConnectionColor}" /></StackPanel>
                                                 <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,12,0">
@@ -162,7 +163,7 @@
                                                 <StackPanel Grid.Column="7" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                                     <Button Content="Backup Now" Command="{Binding DataContext.BackupOneCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="7,6" FontSize="10" ToolTip="Create a local backup on this client" />
                                                     <Button Content="×" Click="RevokeComputer_Click" Style="{StaticResource TextButton}" Padding="6" FontSize="13" ToolTip="Revoke this client's pairing credentials" />
-                                                    <Button Content="↗" Click="Details_Click" Style="{StaticResource TextButton}" Margin="5,0,0,0" ToolTip="View computer details" AutomationProperties.Name="View computer details" />
+                                                    <Button Content="↗" Click="Details_Click" Style="{StaticResource TextButton}" Margin="5,0,0,0" ToolTip="View backup folders and computer details" AutomationProperties.Name="View computer details" />
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -209,7 +210,7 @@
                             <TextBlock Text="Latest 100 jobs. Local archive paths refer to the client PC; cloud completion is confirmed separately." Style="{StaticResource MutedText}" Margin="0,8,0,15" TextWrapping="Wrap" />
                             <ItemsControl ItemsSource="{Binding BackupHistory}"><ItemsControl.ItemTemplate><DataTemplate>
                                 <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,14">
-                                    <StackPanel><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding Time}" Style="{StaticResource MutedText}" /><TextBlock FontWeight="SemiBold"><Run Text="{Binding Computer}" /><Run Text="  ·  Local: " /><Run Text="{Binding State}" /></TextBlock></DockPanel><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,0" /><TextBlock Text="{Binding ArchivePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource Accent}" Margin="0,5,0,0" /><TextBlock Margin="0,10,0,0" FontWeight="SemiBold"><Run Text="Cloud: " /><Run Text="{Binding CloudState}" /></TextBlock><TextBlock Text="{Binding CloudDetail}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0" /><Button Content="Open in Google Drive ↗" Click="OpenCloud_Click" CommandParameter="{Binding CloudLink}" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Padding="0,8,0,0" Visibility="{Binding HasCloudLink, Converter={StaticResource BoolVisibility}}" /></StackPanel>
+                                    <StackPanel><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding Time}" Style="{StaticResource MutedText}" /><TextBlock FontWeight="SemiBold"><Run Text="{Binding Computer}" /><Run Text="  ·  Local: " /><Run Text="{Binding LocalDisplay, Mode=OneWay}" /></TextBlock></DockPanel><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,0" /><TextBlock Text="{Binding ArchivePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource Accent}" Margin="0,5,0,0" /><TextBlock Margin="0,10,0,0" FontWeight="SemiBold"><Run Text="Cloud: " /><Run Text="{Binding CloudDisplay, Mode=OneWay}" /></TextBlock><TextBlock Text="{Binding CloudDetail}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0" /><Button Content="Open in Google Drive ↗" Click="OpenCloud_Click" CommandParameter="{Binding CloudLink}" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Padding="0,8,0,0" Visibility="{Binding HasCloudLink, Converter={StaticResource BoolVisibility}}" /></StackPanel>
                                 </Border>
                             </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
                         </StackPanel>
@@ -236,7 +237,8 @@
                                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <StackPanel Margin="0,0,16,0">
                                                 <TextBlock FontWeight="SemiBold"><Run Text="{Binding Computer}" /><Run Text=" · " /><Run Text="{Binding Time}" /></TextBlock>
-                                                <TextBlock Foreground="{StaticResource Muted}" Margin="0,6,0,0"><Run Text="Local: " /><Run Text="{Binding State}" /><Run Text="   ·   Cloud: " /><Run Text="{Binding CloudState}" /></TextBlock>
+                                                <TextBlock Text="{Binding TriggerText}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" />
+                                                <TextBlock Foreground="{StaticResource Muted}" Margin="0,6,0,0"><Run Text="Local: " /><Run Text="{Binding LocalDisplay, Mode=OneWay}" /><Run Text="   ·   Cloud: " /><Run Text="{Binding CloudDisplay, Mode=OneWay}" /></TextBlock>
                                                 <TextBlock Text="{Binding ArchivePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,6,0,0" />
                                             </StackPanel>
                                             <Button Grid.Column="1" Content="Restore instructions…" Click="RestoreInstructions_Click" IsEnabled="{Binding CanRestore}" VerticalAlignment="Center" AutomationProperties.AutomationId="RestoreInstructions" />
@@ -263,6 +265,16 @@
                     <StackPanel Visibility="{Binding IsSettings, Converter={StaticResource BoolVisibility}}">
                         <Border Style="{StaticResource Card}" Margin="0,0,0,18">
                             <StackPanel>
+                                <TextBlock Text="Daily schedule &amp; retries" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ScheduleSummary}" Style="{StaticResource MutedText}" Margin="0,9,0,22" TextWrapping="Wrap" />
+                                <CheckBox Content="Enable daily backups for configured clients" IsChecked="{Binding ScheduleEnabled}" AutomationProperties.AutomationId="ScheduleEnabled" />
+                                <StackPanel Orientation="Horizontal" Margin="0,18,0,18"><TextBlock Text="Every day at" Margin="0,0,15,0" /><TextBox Text="{Binding ScheduleTime, UpdateSourceTrigger=PropertyChanged}" Width="92" MaxLength="5" AutomationProperties.Name="Daily backup time in 24-hour format" AutomationProperties.AutomationId="ScheduleTime" /><TextBlock Text="24-hour time · host time zone" Style="{StaticResource MutedText}" Margin="14,0,0,0" /></StackPanel>
+                                <WrapPanel Margin="0,0,0,18"><TextBlock Text="Retry temporary local failures" Margin="0,0,12,0" /><TextBox Text="{Binding RetryCount, UpdateSourceTrigger=PropertyChanged}" Width="52" MaxLength="1" AutomationProperties.Name="Maximum local backup retries" /><TextBlock Text="times (0–5), after" Margin="12,0" /><TextBox Text="{Binding RetryDelay, UpdateSourceTrigger=PropertyChanged}" Width="65" MaxLength="4" AutomationProperties.Name="Retry delay in minutes" /><TextBlock Text="minutes. Cancelled jobs stay cancelled." Style="{StaticResource MutedText}" Margin="12,0,0,0" /></WrapPanel>
+                                <Button Content="Save automation" Command="{Binding SaveScheduleCommand}" IsEnabled="{Binding CanPair}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" AutomationProperties.AutomationId="SaveSchedule" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                            <StackPanel>
                                 <TextBlock Text="Host &amp; client pairing" FontSize="17" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding HostStatus}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,12,0,6" />
                                 <TextBlock Text="{Binding HostEndpoint}" FontFamily="Consolas" />
@@ -284,16 +296,18 @@
                                 <TextBox IsReadOnly="True" FontFamily="Consolas" Margin="0,14,0,0" Text=".\AutoBack.Agent.exe drive-connect&#10;.\AutoBack.Agent.exe run" />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,18">
-                            <StackPanel>
-                                <TextBlock Text="Backup schedule" FontSize="17" FontWeight="SemiBold" />
-                                <TextBlock Text="Preview a daily schedule. Changes stay in this session and do not run automatic backups." Style="{StaticResource MutedText}" Margin="0,9,0,22" TextWrapping="Wrap" />
-                                <CheckBox Content="Enable daily backups (demo)" IsChecked="{Binding ScheduleEnabled}" AutomationProperties.AutomationId="ScheduleEnabled" />
-                                <StackPanel Orientation="Horizontal" Margin="0,18,0,20"><TextBlock Text="Every day at" Margin="0,0,15,0" /><TextBox Text="{Binding ScheduleTime, UpdateSourceTrigger=PropertyChanged}" Width="92" MaxLength="5" AutomationProperties.Name="Daily backup time in 24-hour format" AutomationProperties.AutomationId="ScheduleTime" /><TextBlock Text="24-hour time · client local time" Style="{StaticResource MutedText}" Margin="14,0,0,0" /></StackPanel>
-                                <Button Content="Save demo schedule" Command="{Binding SaveScheduleCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" AutomationProperties.AutomationId="SaveSchedule" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Protection &amp; recovery" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="Local and Google Drive backups can be recovered through the Restore page, with full SHA-256 readback verification. Schedules, encrypted archives, retention policies, and installers are the next milestone." Foreground="{StaticResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="22" /></StackPanel></Border>
+                        <Border Style="{StaticResource Card}"><StackPanel>
+                            <TextBlock Text="Client encryption &amp; retention" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock Text="On each stopped client, create a password-protected recovery export before enabling encryption. Set retention counts explicitly; 0 keeps every version. Local pruning preserves pending uploads. Cloud retention moves confirmed old versions to Drive Trash, where Google may delete them after 30 days. See docs/AUTOMATION-ROLLOUT.md for setup, recovery keys, installers and the multi-PC pilot checklist." Foreground="{StaticResource Muted}" Margin="0,10,0,14" TextWrapping="Wrap" LineHeight="22" />
+                            <TextBox IsReadOnly="True" FontFamily="Consolas" Text=".\AutoBack.Agent.exe encryption-enable --recovery-file 'E:\Recovery\client.abkey'&#10;.\AutoBack.Agent.exe retention-configure --keep-local 14 --keep-cloud 30&#10;.\AutoBack.Agent.exe protection-status&#10;.\AutoBack.Agent.exe run" />
+                            <ItemsControl ItemsSource="{Binding Computers}" Margin="0,16,0,0"><ItemsControl.ItemTemplate><DataTemplate>
+                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,12"><StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding ProtectionText}" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{StaticResource Accent}" />
+                                    <TextBlock Text="{Binding MaintenanceText}" TextWrapping="Wrap" Margin="0,5,0,0" Foreground="{StaticResource Muted}" />
+                                </StackPanel></Border>
+                            </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                        </StackPanel></Border>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

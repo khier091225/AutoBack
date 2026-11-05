@@ -70,7 +70,8 @@ internal static class RestoreCommands
                 }
                 result = await new RestoreEngine().RestoreAsync(archive!, destination,
                     new(kind, description, download?.BackupJobId, download?.BackupAgentId),
-                    p => { if (p.State != "Completed") Report(p.State, p.Percent, p.Files, p.Bytes, p.Detail); }, cancellation.Token, operationId: operation);
+                    p => { if (p.State != "Completed") Report(p.State, p.Percent, p.Files, p.Bytes, p.Detail); }, cancellation.Token, operationId: operation,
+                    keys: EncryptionVault.Load(store).Resolve);
             }
             summary = summary with { State = "Completed", Percent = 100, Files = result.Files, Bytes = result.Bytes,
                 BackupJobId = result.BackupJobId, UpdatedUtc = DateTimeOffset.UtcNow,

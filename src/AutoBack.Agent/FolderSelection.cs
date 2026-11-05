@@ -2,9 +2,16 @@ namespace AutoBack.Agent;
 
 internal static class FolderSelection
 {
+    public static string? ChooseInvitation() => SelectOnSta(() =>
+    {
+        using var picker = new System.Windows.Forms.OpenFileDialog { Title = "Choose a fresh pairing invitation from the host", Filter = "AutoBack invitation|*.autoback-invite", CheckFileExists = true };
+        return picker.ShowDialog() == System.Windows.Forms.DialogResult.OK ? picker.FileName : null;
+    });
+    public static bool AskDriveSetup() => SelectOnSta(() => System.Windows.Forms.MessageBox.Show("Connect this client's Google Drive account now? Choose No to configure it later with drive-connect.",
+        "AutoBack client setup", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Question) == System.Windows.Forms.DialogResult.Yes ? "yes" : null) is not null;
     public static string? ChooseRestoreArchive() => SelectOnSta(() =>
     {
-        using var picker = new System.Windows.Forms.OpenFileDialog { Title = "Choose an AutoBack backup ZIP", Filter = "AutoBack ZIP backups|*.zip", CheckFileExists = true };
+        using var picker = new System.Windows.Forms.OpenFileDialog { Title = "Choose an AutoBack backup", Filter = "AutoBack backups|*.zip;*.abk", CheckFileExists = true };
         return picker.ShowDialog() == System.Windows.Forms.DialogResult.OK ? picker.FileName : null;
     });
 
@@ -51,19 +58,17 @@ internal static class FolderSelection
         return result;
     }
 
-    public static (string Source, string Destination)? Choose()
+    public static AutoBack.Backup.BackupPlan? ChoosePlan(AutoBack.Backup.BackupPlan? existing)
     {
-        (string Source, string Destination)? result = null;
+        AutoBack.Backup.BackupPlan? result = null;
         Exception? error = null;
         var thread = new Thread(() =>
         {
             try
             {
-                using var source = new System.Windows.Forms.FolderBrowserDialog { Description = "AutoBack: choose the SOURCE folder to back up", UseDescriptionForTitle = true, ShowNewFolderButton = false };
-                if (source.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                using var destination = new System.Windows.Forms.FolderBrowserDialog { Description = "AutoBack: choose a SEPARATE local DESTINATION folder", UseDescriptionForTitle = true };
-                if (destination.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                result = (source.SelectedPath, destination.SelectedPath);
+                System.Windows.Forms.Application.EnableVisualStyles();
+                using var form = new BackupFoldersForm(existing);
+                if (form.ShowDialog() == System.Windows.Forms.DialogResult.OK) result = form.SelectedPlan;
             }
             catch (Exception ex) { error = ex; }
         });

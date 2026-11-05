@@ -39,6 +39,8 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
     public CloudConfiguration Configuration => _authorization.Status();
     public bool Faulted { get { lock (_gate) return _task?.IsFaulted == true; } }
     public bool IsBusy { get { lock (_gate) return _task is { IsCompleted: false }; } }
+    public IReadOnlyList<SavedUpload> AllUploads() { lock (_gate) return _journal.Uploads.ToArray(); }
+    public void MarkTrashed(Guid id) => Update(id, old => old with { Report = old.Report with { Trashed = true } });
     public CloudReport? NextReport() { lock (_gate) return _journal.Uploads.FirstOrDefault(u => !u.Acknowledged)?.Report; }
 
     public void Acknowledge(Guid? jobId, long sequence)
@@ -112,7 +114,7 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
             } });
         }
         catch (Exception ex) when (ex is DriveException or HttpRequestException or OperationCanceledException or IOException or
-            UnauthorizedAccessException or InvalidDataException or JsonException or KeyNotFoundException or FormatException)
+            UnauthorizedAccessException or InvalidDataException or JsonException or KeyNotFoundException or FormatException or System.Security.Cryptography.CryptographicException)
         {
             var kind = ex is DriveException drive ? drive.Failure : ex is HttpRequestException or OperationCanceledException ? DriveFailure.Retryable : DriveFailure.Permanent;
             var detail = ex is DriveException known ? known.Message : kind == DriveFailure.Retryable

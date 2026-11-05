@@ -17,15 +17,47 @@ internal static class Program
         {
             if (args.Length == 0 || args[0] is "help" or "--help")
             {
-                Console.WriteLine("AutoBack Agent 0.5\npair --invite <file> [--name <name>] [--replace]\nconfigure [--source <folder> --destination <folder>]\ndrive-connect [--client-secrets <Desktop OAuth JSON>]\ndrive-status\ndrive-disconnect\ndrive-retry\nrestore [--archive <ZIP> | --drive-file <ID or link>] [--destination <NEW folder>]\nverify-restore [--destination <restored folder>]\nrestore-status\nrun\nstatus\n\nAll commands accept [--machine] [--data-dir <dedicated folder>].\nconfigure and restore open file/folder pickers when paths are omitted.\nStop the agent/service before changing Drive authorization or running restore/verify-restore.\nUse the same --machine/--data-dir and Windows account as the agent.\nRestore writes recovered content to <destination>/files, verifies every SHA-256, and never overwrites an existing destination.\nRestart the agent after restore to send its saved result to the host. See docs/RESTORE.md.");
+                Console.WriteLine("""
+                    AutoBack Agent 0.7
+                    setup                             Interactive pairing, folders and optional Google sign-in
+                    pair --invite <file> [--name <name>] [--replace]
+                    configure [--source <folder> [--source <another folder> ...] --destination <folder>]
+                    drive-connect [--client-secrets <Desktop OAuth JSON>]
+                    drive-status | drive-disconnect | drive-retry
+                    encryption-enable --recovery-file <NEW .abkey file>
+                    encryption-disable
+                    recovery-export --recovery-file <NEW .abkey file>
+                    recovery-import --recovery-file <.abkey file>
+                    retention-configure [--keep-local <count>] [--keep-cloud <count>]
+                    protection-status
+                    restore [--archive <.zip or .abk> | --drive-file <ID or link>] [--destination <NEW folder>]
+                    verify-restore [--destination <restored folder>]
+                    restore-status | status | run
+
+                    All commands accept [--machine] [--data-dir <dedicated folder>].
+                    Stop the agent/service before setup, restore, or changing protection/Google authorization.
+                    Encryption prompts for a hidden recovery passphrase; never pass one as an argument.
+                    Automated callers can explicitly supply --password-stdin with redirected input.
+                    Retention 0 = disabled; 1–10000 = successful versions to keep at that destination.
+                    Restore writes to <new folder>/files and verifies every file. Existing folders are preserved.
+                    Restart the agent after changes to report settings/results to the host.
+                    See docs/AUTOMATION-ROLLOUT.md and docs/RESTORE.md.
+                    """);
                 return 0;
             }
-            var options = Parse(args.Skip(1).ToArray());
+            var options = Parse(args.Skip(1).ToArray(), out var sourcePaths);
             var machine = options.ContainsKey("--machine");
             var directory = options.GetValueOrDefault("--data-dir") ?? Path.Combine(
                 Environment.GetFolderPath(machine ? Environment.SpecialFolder.CommonApplicationData : Environment.SpecialFolder.LocalApplicationData),
                 "AutoBack", "Agent");
             var store = new ProtectedStore(directory, machine);
+            if (args[0] == "setup") return await SetupCommands.ExecuteAsync(options, store);
+            if (args[0] is "encryption-enable" or "encryption-disable" or "recovery-export" or "recovery-import" or "retention-configure" or "protection-status")
+            {
+                if (args[0] == "protection-status") return ProtectionCommands.Execute(args[0], options, store);
+                using var protectionLock = new FileStream(Path.Combine(Path.GetFullPath(directory), ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return ProtectionCommands.Execute(args[0], options, store);
+            }
             if (args[0] is "restore" or "verify-restore" or "restore-status")
             {
                 if (args[0] == "restore-status") return await RestoreCommands.ExecuteAsync(args[0], options, store);
@@ -64,20 +96,23 @@ internal static class Program
             }
             if (args[0] == "configure")
             {
-                var source = options.GetValueOrDefault("--source");
                 var destination = options.GetValueOrDefault("--destination");
-                if (source is null && destination is null)
+                BackupPlan plan;
+                if (sourcePaths.Count == 0 && destination is null)
                 {
-                    var folders = FolderSelection.Choose();
-                    if (folders is null) { Console.WriteLine("Folder selection cancelled. Existing configuration is unchanged."); return 2; }
-                    (source, destination) = folders.Value;
+                    var selection = FolderSelection.ChoosePlan(store.Load<BackupPlan>("backup-plan.dat"));
+                    if (selection is null) { Console.WriteLine("Folder selection cancelled. Existing configuration is unchanged."); return 2; }
+                    plan = selection;
                 }
-                if (source is null || destination is null) throw new ArgumentException("Provide both --source and --destination, or omit both to open the folder pickers.");
-                var plan = BackupPlan.Create(source, destination);
+                else
+                {
+                    if (sourcePaths.Count == 0 || destination is null) throw new ArgumentException("Provide one or more --source paths and --destination, or omit them to open the folder manager.");
+                    plan = BackupPlan.CreateMany(sourcePaths, destination);
+                }
                 Directory.CreateDirectory(plan.Destination);
                 BackupPlan.CheckNoReparse(plan.Destination);
                 store.Save("backup-plan.dat", plan);
-                Console.WriteLine($"Local backup configured.\nSource: {plan.Source}\nDestination: {plan.Destination}\nStart/keep the agent running; the host will receive this configuration on its next heartbeat.\nThe agent account needs read access to source files and write access to the destination.");
+                Console.WriteLine($"Local backup configured.\nSource folders ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nDestination: {plan.Destination}\nStart/keep the agent running; the host will receive this configuration on its next heartbeat.\nEvery selected folder and its subfolders are included. The agent account needs access to all selected folders.");
                 return 0;
             }
             if (args[0] == "status")
@@ -87,7 +122,7 @@ internal static class Program
                 saved.Validate();
                 Console.WriteLine($"Paired computer: {saved.Name}\nAgent ID: {saved.AgentId}\nHost: {saved.Host}:{saved.Port}\nHost certificate SHA-256: {saved.CertificateSha256}\nCredential store: {Path.GetFullPath(directory)}\nStatus shows saved pairing only; the host dashboard shows live connectivity.");
                 var plan = store.Load<BackupPlan>("backup-plan.dat");
-                Console.WriteLine(plan is null ? "Backup folders: not configured." : $"Backup source: {plan.Source}\nLocal destination: {plan.Destination}");
+                Console.WriteLine(plan is null ? "Backup folders: not configured." : $"Backup sources ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nLocal destination: {plan.Destination}");
                 return 0;
             }
             if (args[0] is not ("pair" or "run")) throw new ArgumentException("Unknown command. Use --help.");
@@ -125,7 +160,7 @@ internal static class Program
             builder.Services.AddHostedService<AgentWorker>();
             using var host = builder.Build();
             await host.RunAsync();
-            return 0;
+            return Environment.ExitCode;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or
             JsonException or InvalidDataException or CryptographicException or DriveException or KeyNotFoundException or FormatException or System.Security.Authentication.AuthenticationException or AgentRejectedException or OperationCanceledException or System.Net.Sockets.SocketException)
@@ -149,17 +184,19 @@ internal static class Program
         }
     }
 
-    private static Dictionary<string, string?> Parse(string[] args)
+    private static Dictionary<string, string?> Parse(string[] args, out List<string> sourcePaths)
     {
+        sourcePaths = [];
         var options = new Dictionary<string, string?>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (key is "--machine" or "--replace") options.Add(key, null);
-            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file")
+            if (key is "--machine" or "--replace" or "--password-stdin") options.Add(key, null);
+            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file" or "--recovery-file" or "--keep-local" or "--keep-cloud")
             {
                 if (++i == args.Length || args[i].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException($"Missing value for {key}.");
-                options.Add(key, args[i]);
+                if (key == "--source") { sourcePaths.Add(args[i]); options[key] = args[i]; }
+                else options.Add(key, args[i]);
             }
             else throw new ArgumentException("Unknown option. Use --help.");
         }

@@ -46,7 +46,10 @@ public sealed class Computer : ObservableObject
     public required string AgentVersion { get; set; }
     public string Address { get; private set; } = "";
     public string Team => $"{MachineName} · agent {AgentVersion}";
-    public string Folder => _snapshot?.Configuration?.Source ?? "Not configured";
+    public IReadOnlyList<string> SourceFolders => _snapshot?.Configuration is { } config ? config.Sources ?? (IReadOnlyList<string>)[config.Source] : [];
+    public string Folder => SourceFolders.Count == 1 ? SourceFolders[0] : SourceFolders.Count > 1 ? $"{SourceFolders.Count} selected folders" : "Not configured";
+    public string SourceFolderSummary => SourceFolders.Count == 0 ? "Choose backup folders on this client" : $"{SourceFolders.Count} backup folder{(SourceFolders.Count == 1 ? "" : "s")} · view details ↗";
+    public string SourceFoldersText => SourceFolders.Count == 0 ? "Not configured" : string.Join(Environment.NewLine, SourceFolders);
     public string Destination => _snapshot?.Configuration?.Destination ?? "Not configured";
     public bool Configured => _snapshot?.Configuration is not null;
     public HostBackupJob? LatestJob => _snapshot?.LatestJob;
@@ -87,6 +90,8 @@ public sealed class Computer : ObservableObject
     public string RestoreDestination => LatestRestore?.Destination ?? "Choose a new folder on the client when restoring.";
     public string RestoreDetail => LatestRestore is { } r ? $"{r.SourceKind} · {r.Files} files · {FormatBytes(r.Bytes)} · {r.UpdatedUtc.ToLocalTime():MMM dd, hh:mm tt} · {r.Detail}" : "Run restore on this client, then restart its agent to send the saved result here.";
     public string RestoreColor => RestoreStatus == "Verified" ? "#14806D" : RestoreStatus is "Failed" or "Interrupted" ? "#B16C13" : "#6F7890";
+    public string ProtectionText => _snapshot?.Protection is { } p ? $"{(p.Encrypted ? "AES-256-GCM" : "Plain ZIP")} · Local keep: {(p.KeepLocal == 0 ? "off" : p.KeepLocal)} · Cloud keep: {(p.KeepCloud == 0 ? "off" : p.KeepCloud)}" : "Protection settings not reported yet.";
+    public string MaintenanceText => _snapshot?.Protection is { } p ? $"{p.State}: {p.Detail}" : "Update and restart the client to report encryption and retention settings.";
 
     public void Update(AgentSnapshot snapshot)
     {
@@ -98,6 +103,8 @@ public sealed class Computer : ObservableObject
         foreach (var property in new[] { nameof(Online), nameof(Connection), nameof(ConnectionColor), nameof(LastSeenUtc), nameof(LastSeenText), nameof(Address), nameof(AgentVersion), nameof(Team), nameof(Folder), nameof(Destination), nameof(Configured), nameof(LatestJob), nameof(IsBusy), nameof(CanBackup), nameof(Size), nameof(Status), nameof(StatusColor), nameof(StatusBackground), nameof(LastBackup), nameof(IsUploading), nameof(Progress), nameof(ProgressText), nameof(BackupDetail) }) Changed(property);
         foreach (var property in new[] { nameof(CloudAccount), nameof(LatestCloud), nameof(CloudStatus), nameof(CloudColor), nameof(CloudBackground), nameof(CloudPercent), nameof(CloudActive), nameof(DriveConnected), nameof(CloudDetail) }) Changed(property);
         foreach (var property in new[] { nameof(LatestRestore), nameof(RestoreStatus), nameof(RestoreDestination), nameof(RestoreDetail), nameof(RestoreColor) }) Changed(property);
+        Changed(nameof(ProtectionText)); Changed(nameof(MaintenanceText));
+        Changed(nameof(SourceFolders)); Changed(nameof(SourceFolderSummary)); Changed(nameof(SourceFoldersText));
     }
 
     public static string FormatBytes(long bytes) => bytes >= 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024 * 1024):0.0} GB" : bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024):0.0} MB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes} B";
@@ -105,10 +112,13 @@ public sealed class Computer : ObservableObject
 
 public sealed record ActivityEntry(string Title, string Description, string Time, string Symbol, string Color);
 public sealed record BackupHistoryEntry(string Computer, string State, string Time, string Detail, string ArchivePath,
-    string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "")
+    string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "", bool LocalPruned = false, bool CloudTrashed = false, string Trigger = "Manual", int Attempt = 0)
 {
-    public bool HasCloudLink => CloudLink.Length > 0;
-    public bool CanRestore => State == "Completed" && (ArchivePath.Length > 0 || HasCloudLink);
+    public bool HasCloudLink => CloudLink.Length > 0 && !CloudTrashed;
+    public bool CanRestore => State == "Completed" && ((!LocalPruned && ArchivePath.Length > 0) || HasCloudLink);
+    public string LocalDisplay => LocalPruned ? "Expired (retention)" : State;
+    public string CloudDisplay => CloudTrashed ? "In Drive Trash (retention)" : CloudState;
+    public string TriggerText => $"{Trigger} · attempt {Attempt + 1}";
 }
 
 public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
@@ -126,6 +136,7 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
     private string _hostStatus = "Starting host";
     private bool _scheduleEnabled;
     private string _scheduleTime = "18:00";
+    private string _retryCount = "0", _retryDelay = "5", _scheduleZone = TimeZoneInfo.Local.Id;
 
     public DashboardViewModel(string? dataDirectory = null, int port = Protocol.DefaultPort)
     {
@@ -147,7 +158,14 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         SaveScheduleCommand = new(_ =>
         {
             if (!TimeOnly.TryParseExact(ScheduleTime, "HH:mm", out var time)) { Notice = "Enter a valid 24-hour time, for example 18:00."; return; }
-            Notice = ScheduleEnabled ? $"Schedule preview: {time:HH:mm} daily. Automatic backups are not implemented yet." : "Schedule preview disabled.";
+            try
+            {
+                if (!int.TryParse(RetryCount, out var retries) || !int.TryParse(RetryDelay, out var delay)) throw new ArgumentException("Enter whole numbers for retry count and minutes.");
+                (_host ?? throw new InvalidOperationException("The host is not running.")).SetAutomation(new(ScheduleEnabled, time.ToString("HH:mm"), _scheduleZone, retries, delay));
+                Notice = $"Automation saved. Daily backups {(ScheduleEnabled ? ScheduleTime + " (" + _scheduleZone + ")" : "disabled")}; up to {retries} retries. Keep this host open.";
+                Changed(nameof(ScheduleSummary));
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException) { Notice = ex.Message; }
         });
         _timer.Tick += Tick;
     }
@@ -165,6 +183,9 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         {
             _host = await _startup;
             if (_disposed) return;
+            var policy = _host.AutomationPolicy;
+            ScheduleEnabled = policy.Enabled; ScheduleTime = policy.DailyTime; RetryCount = policy.MaxRetries.ToString(); RetryDelay = policy.RetryDelayMinutes.ToString(); _scheduleZone = policy.TimeZoneId;
+            Changed(nameof(ScheduleSummary));
             Notice = $"Host listening on TCP {_host.Port}. Pair a computer to begin live monitoring.";
             SyncHost();
             _timer.Start();
@@ -268,7 +289,7 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         "Computers" => "Real paired computers, with connection status reported by their agents.",
         "Activity" => "Saved local backup jobs and connection events from this session.",
         "Restore" => "Recover a local or Google Drive backup into a new folder, then verify every file.",
-        "Settings" => "Host identity, client pairing, and the next backup milestones.",
+        "Settings" => "Daily schedules, retry limits, client protection, and host identity.",
         _ => "Start local backups and follow their progress, all from one place."
     };
     public string Search { get => _search; set { if (Set(ref _search, value)) Refresh(); } }
@@ -276,6 +297,9 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
     public string Notice { get => _notice; set => Set(ref _notice, value); }
     public bool ScheduleEnabled { get => _scheduleEnabled; set => Set(ref _scheduleEnabled, value); }
     public string ScheduleTime { get => _scheduleTime; set => Set(ref _scheduleTime, value); }
+    public string RetryCount { get => _retryCount; set => Set(ref _retryCount, value); }
+    public string RetryDelay { get => _retryDelay; set => Set(ref _retryDelay, value); }
+    public string ScheduleSummary => $"Time zone: {_scheduleZone}. The host must remain open. Missed occurrences catch up once; offline clients wait in the queue.";
     public int TotalCount => Computers.Count;
     public int OnlineCount => Computers.Count(c => c.Online);
     public int AttentionCount => Computers.Count(c => !c.Online || c.LatestJob?.Report.State == "Failed" || c.CloudStatus is "Failed" or "Needs sign-in");
@@ -335,7 +359,8 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         var history = _host.GetJobs().OrderByDescending(j => j.UpdatedUtc).Take(100).Select(j => new BackupHistoryEntry(
             j.AgentName, !BackupStates.Terminal(j.Report.State) && j.CancelRequested ? "Cancelling" : j.Report.State,
             j.UpdatedUtc.ToLocalTime().ToString("MMM dd, hh:mm:ss tt"), j.Report.Detail, j.Report.ArchivePath ?? "",
-            j.Cloud?.State ?? (j.Report.State == "Completed" ? "Not queued" : BackupStates.Terminal(j.Report.State) ? "Not applicable" : "Waiting for local backup"), j.Cloud?.Detail ?? "", j.Cloud?.WebLink ?? "")).ToArray();
+            j.Cloud?.State ?? (j.Report.State == "Completed" ? "Not queued" : BackupStates.Terminal(j.Report.State) ? "Not applicable" : "Waiting for local backup"), j.Cloud?.Detail ?? "", j.Cloud?.WebLink ?? "",
+            j.Report.ArchivePruned, j.Cloud?.Trashed ?? false, j.Trigger, j.Command.Attempt)).ToArray();
         if (!BackupHistory.SequenceEqual(history))
         {
             BackupHistory.Clear();

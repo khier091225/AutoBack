@@ -9,12 +9,13 @@ using System.Text.Json;
 
 namespace AutoBack.Connection;
 
-public sealed class HostServer : IAsyncDisposable
+public sealed partial class HostServer : IAsyncDisposable
 {
     private sealed record StoredAgent(Guid Id, string Name, string MachineName, string AgentVersion, string Address,
         string SecretHash, DateTimeOffset PairedUtc, DateTimeOffset? LastSeenUtc = null, bool Revoked = false,
-        BackupConfiguration? Configuration = null, CloudConfiguration? CloudConfiguration = null, RestoreSummary? LatestRestore = null);
-    private sealed record Registry(List<StoredAgent> Agents, List<HostBackupJob>? Jobs = null);
+        BackupConfiguration? Configuration = null, CloudConfiguration? CloudConfiguration = null, RestoreSummary? LatestRestore = null,
+        string? LastScheduledSlot = null, AgentProtectionSummary? Protection = null);
+    private sealed record Registry(List<StoredAgent> Agents, List<HostBackupJob>? Jobs = null, HostAutomationPolicy? Automation = null);
     private sealed record PendingInvitation(string SecretHash, DateTimeOffset ExpiresUtc);
     private readonly object _gate = new();
     private readonly ProtectedStore _store;
@@ -54,6 +55,7 @@ public sealed class HostServer : IAsyncDisposable
             if (_registry.Agents is null || _registry.Agents.Any(a => a.Id == Guid.Empty || !Protocol.ValidName(a.Name) || !Protocol.ValidSecret(a.SecretHash)))
                 throw new InvalidDataException("The host registry is invalid. Restore the host data directory from a trusted copy.");
             _certificate = HostIdentity.LoadOrCreate(_store);
+            _registry.Automation?.Validate();
         }
         catch { _instanceLock.Dispose(); throw; }
     }
@@ -72,6 +74,7 @@ public sealed class HostServer : IAsyncDisposable
         Port = ((IPEndPoint)listener.LocalEndpoint).Port;
         _running = true;
         _acceptTask = AcceptAsync(_lifetime.Token);
+        _automationTask = AutomationLoopAsync(_lifetime.Token);
         Log("Host started", $"Listening for authenticated clients on TCP {Port}.");
     }
 
@@ -99,7 +102,7 @@ public sealed class HostServer : IAsyncDisposable
                 IsRunning && _seenThisRun.Contains(a.Id) && a.LastSeenUtc.HasValue && now - a.LastSeenUtc.Value < _offlineAfter,
                 a.Configuration, _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id),
                 _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed"), a.CloudConfiguration,
-                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore)).ToArray();
+                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null && !j.Cloud.Trashed).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore, a.Protection)).ToArray();
     }
 
     public IReadOnlyList<HostBackupJob> GetJobs()
@@ -118,7 +121,7 @@ public sealed class HostServer : IAsyncDisposable
             if (_registry.Jobs!.Any(j => j.AgentId == agentId && !BackupStates.Terminal(j.Report.State)))
                 throw new InvalidOperationException("This computer already has a pending backup.");
             var now = _clock.GetUtcNow();
-            var command = new BackupCommand(Guid.NewGuid(), agent.Configuration.PlanId, now);
+            var command = new BackupCommand(Guid.NewGuid(), agent.Configuration.PlanId, now, Encrypt: agent.Configuration.Encrypted);
             var job = new HostBackupJob(agent.Id, agent.Name, command,
                 new(command.JobId, 0, "Queued", 0, 0, 0, 0, 0, "Waiting for the client to acknowledge the job."), now);
             Save(_registry with { Jobs = [.. _registry.Jobs!, job] });
@@ -256,6 +259,8 @@ public sealed class HostServer : IAsyncDisposable
             if (!BackupStates.ValidConfiguration(request.Configuration)) return Denied("Invalid backup configuration report.");
             if (!CloudStates.ValidConfiguration(request.CloudConfiguration)) return Denied("Invalid cloud configuration report.");
             if (!RestoreStates.ValidSummary(request.LatestRestore)) return Denied("Invalid restore summary.");
+            if (request.Protection is { } protection && (protection.KeepLocal is < 0 or > 10000 || protection.KeepCloud is < 0 or > 10000 ||
+                !BackupStates.ValidText(protection.State, 40) || !BackupStates.ValidText(protection.Detail, 1024))) return Denied("Invalid protection summary.");
             var jobs = _registry.Jobs!;
             var report = request.Report;
             HostBackupJob? acknowledged = null;
@@ -264,7 +269,9 @@ public sealed class HostServer : IAsyncDisposable
                 if (!BackupStates.ValidReport(report)) return Denied("Invalid backup progress report.");
                 var job = jobs.SingleOrDefault(j => j.AgentId == known.Id && j.Command.JobId == report.JobId);
                 if (job is null) return Denied("Backup report does not belong to this agent.");
-                if (report.Sequence > job.Report.Sequence && !BackupStates.Terminal(job.Report.State))
+                var pruned = job.Report.State == "Completed" && !job.Report.ArchivePruned && report.ArchivePruned &&
+                    report with { Sequence = job.Report.Sequence, ArchivePruned = false } == job.Report;
+                if (report.Sequence > job.Report.Sequence && (!BackupStates.Terminal(job.Report.State) || pruned))
                 {
                     acknowledged = job with { Report = report, UpdatedUtc = now };
                     jobs = jobs.Select(j => j.Command.JobId == report.JobId ? acknowledged : j).ToList();
@@ -278,7 +285,9 @@ public sealed class HostServer : IAsyncDisposable
                 var job = jobs.SingleOrDefault(j => j.AgentId == known.Id && j.Command.JobId == cloud.JobId && j.Report.State == "Completed");
                 if (job is null) return Denied("Cloud report does not belong to a completed local backup on this agent.");
                 cloudAcknowledged = job;
-                if ((job.Cloud is null || cloud.Sequence > job.Cloud.Sequence) && job.Cloud?.State != "Completed")
+                var trashed = job.Cloud is { State: "Completed", Trashed: false } && cloud.Trashed &&
+                    cloud with { Sequence = job.Cloud.Sequence, Trashed = false } == job.Cloud;
+                if ((job.Cloud is null || cloud.Sequence > job.Cloud.Sequence) && (job.Cloud?.State != "Completed" || trashed))
                 {
                     cloudAcknowledged = job with { Cloud = cloud, CloudUpdatedUtc = now };
                     jobs = jobs.Select(j => j.Command.JobId == cloud.JobId ? cloudAcknowledged : j).ToList();
@@ -287,6 +296,7 @@ public sealed class HostServer : IAsyncDisposable
             var updated = known with { LastSeenUtc = now, Address = address, Configuration = request.Configuration,
                 CloudConfiguration = request.CloudConfiguration,
                 LatestRestore = request.LatestRestore ?? known.LatestRestore,
+                Protection = request.Protection ?? known.Protection,
                 AgentVersion = BackupStates.ValidText(request.AgentVersion, 40) ? request.AgentVersion! : known.AgentVersion };
             Save(_registry with { Agents = _registry.Agents.Select(a => a.Id == known.Id ? updated : a).ToList(), Jobs = jobs });
             _seenThisRun.Add(known.Id);
@@ -338,6 +348,7 @@ public sealed class HostServer : IAsyncDisposable
         await _lifetime.CancelAsync();
         _listener?.Stop();
         if (_acceptTask is not null) await _acceptTask;
+        if (_automationTask is not null) await _automationTask;
         await Task.WhenAll(_handlers.Values);
         _certificate.Dispose();
         _instanceLock.Dispose();

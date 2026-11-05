@@ -11,7 +11,7 @@ public sealed record RestoreProgress(string State, int Percent, int Files, long 
 public sealed record RestoreSource(string Kind, string Description, Guid? ExpectedJobId = null, Guid? ExpectedAgentId = null);
 public sealed record RestoreResult(Guid OperationId, Guid BackupJobId, Guid BackupAgentId, DateTimeOffset VerifiedUtc,
     string SourceKind, string SourceDescription, string Destination, string PayloadDirectory, string ArchiveSha256,
-    int Files, int Directories, long Bytes, string State = "Completed");
+    int Files, int Directories, long Bytes, string State = "Completed", List<ManifestRoot>? Roots = null);
 
 public sealed partial class RestoreEngine
 {
@@ -68,11 +68,27 @@ public sealed partial class RestoreEngine
 
     public static void ValidateManifest(BackupManifest manifest, RestoreLimits limits)
     {
-        if (manifest.FormatVersion != 1 || manifest.JobId == Guid.Empty || manifest.AgentId == Guid.Empty ||
+        if (manifest.FormatVersion is not (1 or 2) || manifest.JobId == Guid.Empty || manifest.AgentId == Guid.Empty ||
             !BackupStates.ValidText(manifest.Source, 1024) || !Path.IsPathFullyQualified(manifest.Source) ||
             manifest.Files is null || manifest.Directories is null ||
             (long)manifest.Files.Count + manifest.Directories.Count + 1 > limits.MaxEntries)
             throw new InvalidDataException("Unsupported or invalid AutoBack backup manifest.");
+        if (manifest.FormatVersion == 1 && manifest.Roots is { Count: > 0 }) throw new InvalidDataException("Single-folder manifests cannot declare additional source roots.");
+        if (manifest.FormatVersion == 2)
+        {
+            if (manifest.Roots is null || manifest.Roots.Count is < 2 or > 20 || manifest.Roots.Any(r => r is null || !BackupStates.ValidText(r.Source, 1024) || !Path.IsPathFullyQualified(r.Source)) ||
+                manifest.Roots.Select(r => r.Source).Distinct(StringComparer.OrdinalIgnoreCase).Count() != manifest.Roots.Count || manifest.Source != manifest.Roots[0].Source)
+                throw new InvalidDataException("Invalid multi-folder backup source mapping.");
+            var prefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in manifest.Roots)
+            {
+                ValidateRelativePath(root.Prefix);
+                if (root.Prefix.Contains('/') || !prefixes.Add(root.Prefix) || !manifest.Directories.Contains(root.Prefix, StringComparer.Ordinal))
+                    throw new InvalidDataException("Invalid or duplicate multi-folder restore prefix.");
+            }
+            if (manifest.Directories.Any(d => d is null || !prefixes.Contains(d.Split('/')[0])) || manifest.Files.Any(f => f is null || f.Path is null || !f.Path.Contains('/') || !prefixes.Contains(f.Path.Split('/')[0])))
+                throw new InvalidDataException("A multi-folder archive entry is outside its declared source roots.");
+        }
         var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var directory in manifest.Directories)
@@ -100,7 +116,7 @@ public sealed partial class RestoreEngine
     }
 
     public async Task<RestoreResult> RestoreAsync(string archivePath, string destination, RestoreSource source,
-        Action<RestoreProgress>? progress = null, CancellationToken cancellationToken = default, RestoreLimits? limits = null, Guid? operationId = null)
+        Action<RestoreProgress>? progress = null, CancellationToken cancellationToken = default, RestoreLimits? limits = null, Guid? operationId = null, Func<Guid, ArchiveKey>? keys = null)
     {
         limits ??= new();
         destination = NormalizeDestination(destination);
@@ -113,15 +129,19 @@ public sealed partial class RestoreEngine
         progress?.Invoke(new("Validating", 0, 0, 0, "Validating the archive manifest and all restore paths."));
         try
         {
-            await using var input = new FileStream(Path.GetFullPath(archivePath), FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous);
+            await using var input = ArchiveFile.OpenRead(Path.GetFullPath(archivePath), keys);
+            await ArchiveFile.AuthenticateAsync(input, cancellationToken);
             using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: true);
             var manifest = await ReadManifestAsync(archive, limits, cancellationToken);
             if ((source.ExpectedJobId.HasValue && source.ExpectedJobId != manifest.JobId) ||
                 (source.ExpectedAgentId.HasValue && source.ExpectedAgentId != manifest.AgentId))
                 throw new InvalidDataException("The downloaded archive does not match the selected Google Drive backup identity.");
-            var originalSource = Path.TrimEndingDirectorySeparator(Path.GetFullPath(manifest.Source));
-            if (BackupPlan.Contains(originalSource, destination) || BackupPlan.Contains(destination, originalSource))
-                throw new IOException("Restore into a separate folder outside the original source tree.");
+            foreach (var sourcePath in manifest.Roots?.Select(r => r.Source) ?? [manifest.Source])
+            {
+                var originalSource = Path.TrimEndingDirectorySeparator(Path.GetFullPath(sourcePath));
+                if (BackupPlan.Contains(originalSource, destination) || BackupPlan.Contains(destination, originalSource))
+                    throw new IOException("Restore into a separate folder outside every original source tree.");
+            }
             var expected = new Dictionary<string, (bool Directory, ManifestFile? File)>(StringComparer.Ordinal)
             { ["manifest.json"] = (false, null) };
             foreach (var directory in manifest.Directories) expected.Add("files/" + directory + "/", (true, null));
@@ -188,10 +208,10 @@ public sealed partial class RestoreEngine
             }
             progress?.Invoke(new("Verifying", 80, restoredFiles, restoredBytes, "Reading back the restored files and verifying the complete file set."));
             await VerifyPayloadAsync(payload, manifest, cancellationToken);
-            input.Position = 0;
-            var archiveHash = Convert.ToHexString(await SHA256.HashDataAsync(input, cancellationToken));
+            await using var raw = File.OpenRead(archivePath);
+            var archiveHash = Convert.ToHexString(await SHA256.HashDataAsync(raw, cancellationToken));
             var result = new RestoreResult(operation, manifest.JobId, manifest.AgentId, DateTimeOffset.UtcNow, source.Kind,
-                source.Description, destination, Path.Combine(destination, "files"), archiveHash, restoredFiles, manifest.Directories.Count, restoredBytes);
+                source.Description, destination, Path.Combine(destination, "files"), archiveHash, restoredFiles, manifest.Directories.Count, restoredBytes, Roots: manifest.Roots);
             await WriteJsonAsync(Path.Combine(staging, "manifest.json"), manifest, cancellationToken);
             await WriteJsonAsync(Path.Combine(staging, "restore-report.json"), result, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -242,6 +262,8 @@ public sealed partial class RestoreEngine
         if (report.State != "Completed" || report.OperationId == Guid.Empty || report.BackupJobId != manifest.JobId || report.BackupAgentId != manifest.AgentId ||
             !Protocol.ValidSecret(report.ArchiveSha256) || report.Files != manifest.Files.Count || report.Directories != manifest.Directories.Count || report.Bytes != manifest.Files.Sum(f => f.Length))
             throw new InvalidDataException("Restore report and manifest do not agree.");
+        if (JsonSerializer.Serialize(report.Roots, Protocol.Json) != JsonSerializer.Serialize(manifest.Roots, Protocol.Json))
+            throw new InvalidDataException("Restore report source folders do not match the manifest.");
         await VerifyPayloadAsync(Path.Combine(destination, "files"), manifest, token);
         return report with { VerifiedUtc = DateTimeOffset.UtcNow, Destination = destination, PayloadDirectory = Path.Combine(destination, "files") };
     }

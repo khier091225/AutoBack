@@ -4,7 +4,7 @@ The host requests a job; the authenticated client creates and verifies a new ZIP
 
 ## 1. Update the host and agent
 
-Use the version 0.5 host **and** agent (protocol 3). Close the previous host window and stop the previous agent before replacing its executable folder. Saved identities and pairing credentials are retained. Version 0.5 adds optional restore reporting to protocol 3.
+Use the version 0.7 host **and** agent (protocol 3). Close the previous host window and stop the previous agent before replacing its executable folder. Saved identities and pairing credentials are retained. Version 0.7 reports the complete per-client source list and supports multi-folder archive format 2. See [folder selection](SELECT-FOLDERS.md) and [Automation and rollout](AUTOMATION-ROLLOUT.md).
 
 Publish from the repository if needed:
 
@@ -23,14 +23,14 @@ For console mode, open PowerShell in the agent directory:
 .\AutoBack.Agent.exe configure
 ```
 
-Two folder pickers open: choose the source first, then a separate destination. Cancelling a picker leaves the previous configuration unchanged. Alternatively, set both paths explicitly:
+A folder manager opens with existing selections prefilled. Use Add folder / Remove selected, choose a separate destination and Save folders. Cancel preserves the previous configuration. Repeat `--source` for multiple folders with the CLI, or use a single source as before:
 
 ```powershell
 .\AutoBack.Agent.exe configure --source "D:\OfficeFiles" --destination "E:\OfficeBackups"
 .\AutoBack.Agent.exe run
 ```
 
-Use the same Windows account and `--data-dir` as pairing. Only one source folder is configured per client in this milestone; its subfolders are included. The chosen destination may be on another local drive. A backup on the same physical disk does not protect against failure of that disk.
+Use the same Windows account and `--data-dir` as pairing. Each client may select 1–20 separate source folders, with all their subfolders included. Each source needs appropriate read permissions. The chosen destination may be on another local drive. A backup on the same physical disk does not protect against failure of that disk.
 
 The destination cannot be inside the source, equal to it, or contain it. Network shares/mapped network drives and paths through junctions/symbolic links are unsupported. Backups fail when a junction or symbolic link is encountered inside the source, rather than silently excluding it.
 
@@ -81,12 +81,14 @@ Each full backup has a separate job directory under the configured destination:
 E:\OfficeBackups\AutoBack\{agent-id}\{job-id}\backup-{UTC-timestamp}.zip
 ```
 
-The ZIP contains:
+With encryption enabled, the extension is `.abk`: an authenticated encrypted envelope containing the same ZIP structure, written without a plaintext ZIP staging file. The ZIP contains:
 
 - `files/`: source files and directories, including empty directories and zero-byte files.
 - `manifest.json`: format version, job and agent IDs, source path, creation time, directory list, and each file's length, original modification time, and SHA-256 hash.
 
-ZIP paths are relative to the selected source. Payload files live under `files/`, so a source file named `manifest.json` cannot collide with backup metadata. Existing versions are never overwritten or pruned.
+ZIP paths are relative to the selected source. Payload files live under `files/`, so a source file named `manifest.json` cannot collide with backup metadata. New versions never overwrite an existing one. Optional client retention can expire eligible older archives after verifying the copies to keep; it is disabled by default.
+
+With multiple sources, format-2 manifests map each original source to a unique numbered payload folder such as `01-Documents/` and `02-Documents/`. Identical folder/file names from different locations remain separate. Single-source archives keep format 1 and the existing layout. See [folder selection and restore layout](SELECT-FOLDERS.md).
 
 While a job runs, its output has a `.partial` suffix. Only a closed, flushed, verified archive is renamed to `.zip`. Failed/cancelled jobs attempt to remove only their own partial file. A force-killed agent may leave a partial file; the journal marks interrupted work **Failed** on restart and never treats that file as a successful backup. Start a new job to retry; an interrupted job is not silently executed again.
 
@@ -97,7 +99,7 @@ While a job runs, its output has a `.partial` suffix. Only a closed, flushed, ve
 - Cancellation is best effort until publication. If the archive finished before the cancel command arrived, the result can still be Completed.
 - No files are silently skipped: locked/unreadable files or detected source changes fail the job. Files are opened read-only without permitting concurrent writers. A second scan checks additions/removals and size/time changes. This is **not** a transactional filesystem/VSS snapshot; close applications editing the source before a backup.
 - This milestone supports ordinary files/folders, not live databases, complete Windows images, NTFS permissions/alternate data streams, or snapshot recovery.
-- ZIP archives are **unencrypted**. Encryption, retention, schedules, automatic backup retry policies, and installers are later work. Use the [restore guide](RESTORE.md) to recover a local or Google Drive ZIP into a new folder and verify every recovered file. Archive upload verification alone does not replace a restore drill.
+- Plain ZIP archives remain **unencrypted**. Opt into authenticated `.abk` encryption and recovery exports using [Automation and rollout](AUTOMATION-ROLLOUT.md); that guide also covers schedules/retries, opt-in retention and installers. Use the [restore guide](RESTORE.md) to recover local/Drive versions into a new folder and verify every file. Archive upload verification alone does not replace a restore drill.
 - Windows Service folder access and multi-PC LAN behavior still need validation in the target office environment. Automated tests exercise real filesystem archives and real host/agent processes on loopback.
 
 Implementation references: [Microsoft ZipArchive API](https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.ziparchive) and [FileShare semantics](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare).

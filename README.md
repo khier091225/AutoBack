@@ -2,7 +2,7 @@
 
 A Windows host dashboard and background client agent for centrally controlled file and folder backups. Intended flow: **host → client command; client → Google Drive upload; client → host progress**.
 
-## Current milestone: restore and verification
+## Current milestone: per-computer multi-folder selection (v0.7)
 
 - An embedded host listener on TCP **47831**, active while the WPF host is open.
 - A client agent that connects outbound and reports an authenticated heartbeat every **5 seconds**.
@@ -16,14 +16,27 @@ A Windows host dashboard and background client agent for centrally controlled fi
 - Independent local/cloud job results and a verified Drive link in the host's history. Cloud failure never rewrites a successful local result.
 - Local ZIP and direct Google Drive recovery into a fresh folder, full file-set/SHA-256 readback, a saved restore report, and standalone re-verification.
 - A Restore dashboard page with backup-specific client instructions and the latest authenticated recovery result per client.
+- Persistent daily schedules in the host time zone, one missed-occurrence catch-up, offline queues and bounded local backup retries with immutable attempt history.
+- Streaming AES-256-GCM `.abk` backups, DPAPI-protected client keys, password-protected recovery exports/imports and cross-client recovery.
+- Opt-in local/cloud version retention with survivor verification, upload protection, exact managed-file pruning and confirmed Google Drive trashing.
+- Self-contained host/agent Windows MSI installers, a client setup helper, service recovery configuration, package inspection and a physical-PC pilot checklist.
+- A per-client folder manager with Add/Remove/Save, saved selections and up to 20 sources per PC. All subfolders are included; the host displays the complete reported list in computer details. Multi-folder archives retain separate source mappings and avoid duplicate-name collisions.
 
-There are no sample computers or simulated backups in the app. **Encryption, retention, and automatic scheduling are not implemented yet.** Scheduling remains explicitly labelled as a preview. ZIP backups are currently unencrypted. Google upload code is covered by simulated HTTP tests and a successful live console-mode test on November 5, 2026: the paired client created a ZIP from two synthetic files, uploaded directly to Google Drive, and confirmed remote size/checksum. The original client folder configuration was restored afterward. Windows Service and cross-PC rollout validation are still pending.
+Use **[Choose backup folders per computer](docs/SELECT-FOLDERS.md)** for the simple setup. With the MSI, open **Choose AutoBack backup folders** from Start Menu. With the portable client, run `AutoBack.Agent.exe configure`. Old single-folder plans/backups remain compatible; new multi-folder archives require v0.7 restore tools. [Folder manager preview](docs/backup-folders-preview.png) and [validation evidence](artifacts/multi-folder-validation/result.json).
+
+There are no sample computers or simulated backups in the app. Existing clients retain their settings: schedules/retries start disabled, encryption is explicit and retention defaults to keeping everything. Plain `.zip` archives remain unencrypted; opt into `.abk` encryption with a verified recovery export. The host must remain open for scheduling. Google upload and restore were live-tested on November 5, 2026 using synthetic files. Windows Service installation, reboot/ACL checks and testing across multiple physical PCs remain pending; installers and the physical-PC test guide are prepared.
 
 The same cloud backup also passed a **live download and restore drill on November 5, 2026** using the published v0.5 client: both synthetic files (239 payload bytes) recovered into a fresh folder, every SHA-256 matched the originals, standalone re-verification passed, and the actual restarted client reported completion to the paired host over TLS. Source files, the original archive and the backup configuration were unchanged. [Local validation evidence](artifacts/live-restore-test-1793862866092/result.json).
+
+Version 0.6 passed a separate **live encrypted upload, retention and recovery drill**: a fresh isolated validation client uploaded two encrypted versions, retained the newest local/cloud version, pruned only its old synthetic local archive and moved only its old cloud object to Trash. A separate client data store imported its recovery export and downloaded/decrypted/restored both files (110 bytes), then passed re-verification. Original client settings and prior backups were preserved. [Live automation evidence](artifacts/live-automation-test-1793864952400/result.json).
+
+The automated console pilot also ran **three real agent processes on one physical PC**, completed six daily scheduled backups, verified all three clients' recovery, and tested offline queuing/reconnect. [Local multi-client evidence](artifacts/automation-validation/multi-client-result.json). This does not claim multiple-PC or Windows Service validation.
 
 ![Live host dashboard](docs/dashboard-preview.png)
 
 ## First run
+
+For the prepared pilot installers, use `artifacts\installers\AutoBack-Host-0.7.0-win-x64.msi` and `AutoBack-Agent-0.7.0-win-x64.msi`. Verify the adjacent `SHA256SUMS.txt` and follow **[automation/deployment setup](docs/AUTOMATION-ROLLOUT.md)** and **[physical-PC rollout checklist](docs/ROLLOUT-CHECKLIST.md)**. The agent MSI starts stopped/manual; its setup helper pairs/configures the client and enables automatic startup after folder permissions are ready. Console-mode development instructions follow.
 
 On the host, open `AutoBack.slnx` in Visual Studio and run the **AutoBack** project, or:
 
@@ -48,10 +61,10 @@ Copy the **entire** published folder to the client, together with its invitation
 .\AutoBack.Agent.exe run
 ```
 
-`configure` opens source and destination folder pickers on the client. Keep them separate: neither folder may contain the other. The console stays open for this initial test. Once its configuration appears in the host, click **Backup Now** or select clients and click **Backup selected**. The published agent does not require the .NET SDK on the client.
+`configure` opens the client folder manager: add each source folder, choose a separate local backup destination, then Save folders. All selected subfolders are included. The console stays open for this initial test. Once its configuration appears in the host, click **Backup Now** or select clients and click **Backup selected**. The published agent does not require the .NET SDK on the client.
 
 See **[connection setup](docs/CONNECTION-SETUP.md)** for LAN/firewall setup, automatic Windows Service startup, re-pairing, and troubleshooting.
-See **[local backup setup](docs/LOCAL-BACKUP.md)** for folders/permissions and **[Google Drive setup](docs/GOOGLE-DRIVE-SETUP.md)** for Google Cloud project creation, Desktop OAuth JSON, per-client sign-in, service mode, and the first live upload test. Update **both host and agent** to version 0.5 (protocol 3); existing saved pairings are reused.
+See **[local backup setup](docs/LOCAL-BACKUP.md)** for folders/permissions and **[Google Drive setup](docs/GOOGLE-DRIVE-SETUP.md)** for Google Cloud project creation, Desktop OAuth JSON, per-client sign-in and service mode. Update **both host and agent** to version 0.7 (protocol 3); existing saved pairings are reused. Full source lists extend protocol 3; multiple-source archives use manifest format 2. Existing single-source archives retain format 1.
 
 For recovery, open **Restore** on the host for the selected backup's instructions. Stop the client agent, then run the appropriate command in its published folder:
 
@@ -74,6 +87,8 @@ dotnet run --project tests/AutoBack.Connection.Tests/AutoBack.Connection.Tests.c
 dotnet run --project tests/AutoBack.Backup.Tests/AutoBack.Backup.Tests.csproj -c Release
 dotnet run --project tests/AutoBack.Drive.Tests/AutoBack.Drive.Tests.csproj -c Release
 dotnet run --project tests/AutoBack.Restore.Tests/AutoBack.Restore.Tests.csproj -c Release
+dotnet run --project tests/AutoBack.Automation.Tests/AutoBack.Automation.Tests.csproj -c Release
+dotnet run --project tests/AutoBack.Folders.Tests/AutoBack.Folders.Tests.csproj -c Release
 dotnet run --project tests/AutoBack.Desktop.Tests/AutoBack.Desktop.Tests.csproj -c Release
 ```
 
@@ -83,15 +98,24 @@ The Drive suite simulates Google's HTTP API while using real local ZIPs and real
 
 The restore suite exercises real archives, file/directory recovery, independent readback, modified/missing/extra files, no-overwrite and publication races, path traversal/collisions, link entries, format/size limits, cancellation cleanup, authenticated downloads and failure scenarios using simulated Google HTTP, actual CLI commands, protected journals, interrupted recovery, and TLS reporting. The desktop suite also validates recovery navigation and instructions with a real local restore.
 
+The automation suite checks streaming encryption, header/chunk/footer tampering, truncation/order changes, wrong/missing recovery keys, portable export/import, local/cloud retention boundaries, changed survivor protection, encrypted upload/download with simulated Google HTTP, persisted schedules, DST/catch-up, bounded retries, immutable expiration reports and the actual three-client console pilot. Desktop checks cover saved automation and client protection/expiration status. Package checks inspect the built MSI databases, checksums, credential exclusions and service configuration without installing the product.
+
+The folders suite exercises the real Windows Forms folder manager and CLI, 1–20 independent sources, duplicate/overlap/missing-root rejection, saved selections/cancellation, legacy compatibility, format-2 mapping/readback, encrypted Drive roundtrips with simulated HTTP, retention and an actual host-triggered multi-folder backup. Desktop checks also validate folder counts and the full source list in computer details.
+
+```powershell
+.\scripts\Build-Installers.ps1
+.\scripts\Test-InstallerPackages.ps1
+```
+
 Machine-wide DPAPI roundtrips and Windows Service installation need an elevated account. In a normal terminal the suite verifies that machine mode is rejected **before** altering directory permissions. The scripts can be syntax-checked without elevation; installation must be exercised separately on a client with administrator access.
 
-## Next milestones
+## Milestone status
 
 1. **Host–agent connection (implemented):** pairing, heartbeats, real inventory, reconnect, and revocation.
-2. **Local backup (implemented):** client-selected folders, versioned ZIPs/manifests, persisted jobs, acknowledgements, cancellation, verification, and actual progress/errors.
+2. **Local backup (implemented):** per-client multi-folder selection, versioned ZIPs/manifests, persisted jobs, acknowledgements, cancellation, verification, and actual progress/errors.
 3. **Direct Google Drive upload (implemented; live console test verified):** client authorization, protected tokens, resumable upload, retries, remote result verification, and separate local/cloud status. One upload per client; office-wide upload slots remain rollout work.
 4. **Restore verification (implemented; live console drill verified):** local/Drive recovery to a fresh folder, manifest and SHA-256 verification, standalone recheck, protected history, and authenticated dashboard results.
-5. **Automation and deployment:** persisted schedules, missed-run policies, encryption and recoverable keys, retention, hardened installers, service recovery, and testing on multiple physical PCs.
+5. **Automation and deployment (implemented; physical rollout pending):** persisted schedules/retries, recoverable encryption, opt-in retention, built/inspected Windows MSIs, service setup/recovery and an executable readiness check plus physical-PC pilot guide. Live encrypted cloud retention/recovery and a three-process single-PC pilot passed. MSI install/upgrade/uninstall, service reboot/permissions and multi-physical-PC tests require the target environment.
 
 The backup engine covers ordinary local files/folders. It fails on inaccessible/locked files, detected source changes, and symbolic links/junctions. It is not a filesystem snapshot; live databases and full Windows images need a separate design.
 
@@ -99,12 +123,12 @@ The backup engine covers ordinary local files/folders. It fails on inaccessible/
 
 - `MainWindow.xaml`, `DashboardViewModel.cs`: WPF host dashboard and live inventory.
 - `AddComputerWindow.xaml`: invitation export and client instructions.
-- `src/AutoBack.Connection`: framed TLS protocol, pairing registry, host identity, DPAPI storage, and agent transport.
+- `src/AutoBack.Connection`: framed TLS protocol, pairing registry, host scheduler/retries, host identity, DPAPI storage, and agent transport.
 - `src/AutoBack.Agent`: console pairing/status/restore commands and Windows Service worker.
-- `src/AutoBack.Backup`: folder validation, ZIP creation, checksum verification, restore/readback, and durable client journals.
+- `src/AutoBack.Backup`: folder validation, ZIP creation, streaming encryption/recovery keys, local retention, restore/readback, and durable client journals.
 - `src/AutoBack.Drive`: Desktop OAuth/PKCE, token refresh, resumable Drive API uploads, verified downloads, and protected cloud job checkpoints.
-- `scripts`: optional service registration/removal and host firewall setup.
-- `tests`: connection, local backup, Drive, restore, and desktop integration checks.
+- `scripts`: installer build/inspection, client setup/readiness, legacy service registration/removal and opt-in host firewall setup.
+- `tests`: connection, local backup, Drive, restore, automation/multi-client and desktop integration checks.
 
 Host identity and devices are saved under `%LOCALAPPDATA%\AutoBack\Host`, protected for the current Windows account. Console agent credentials use `%LOCALAPPDATA%\AutoBack\Agent`; service credentials use `%PROGRAMDATA%\AutoBack\Agent` with machine DPAPI and a restricted ACL. Do not commit invitation files or credential stores.
 

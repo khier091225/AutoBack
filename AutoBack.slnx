@@ -12,5 +12,7 @@
     <Project Path="tests/AutoBack.Backup.Tests/AutoBack.Backup.Tests.csproj" />
     <Project Path="tests/AutoBack.Drive.Tests/AutoBack.Drive.Tests.csproj" />
     <Project Path="tests/AutoBack.Restore.Tests/AutoBack.Restore.Tests.csproj" />
+    <Project Path="tests/AutoBack.Automation.Tests/AutoBack.Automation.Tests.csproj" />
+    <Project Path="tests/AutoBack.Folders.Tests/AutoBack.Folders.Tests.csproj" />
   </Folder>
 </Solution>
