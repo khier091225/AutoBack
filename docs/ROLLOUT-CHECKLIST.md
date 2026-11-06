@@ -13,6 +13,7 @@ Record host computer/operator, host LAN IPv4/DNS name, agent PC names, Windows b
 | Readiness report from Test-ClientReadiness.ps1 | — | Pending | Pending |
 | Pairing with distinct fresh invitation and correct host certificate | — | Pending | Pending |
 | LocalService source Read / backup destination Modify, no unnecessary access | — | Pending | Pending |
+| v0.8.2 Check access / Grant required access under elevated LocalService verification; blocked Save/start on failures | — | Pending | Pending |
 | Direct Google sign-in in the correct machine scope | — | Pending | Pending |
 | Separate recovery export copied safely off client | — | Pending | Pending |
 

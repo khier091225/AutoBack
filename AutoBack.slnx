@@ -19,5 +19,6 @@
     <Project Path="tests/AutoBack.Legacy.UnitTests/AutoBack.Legacy.UnitTests.csproj" />
     <Project Path="tests/AutoBack.Legacy.IntegrationTests/AutoBack.Legacy.IntegrationTests.csproj" />
     <Project Path="tests/AutoBack.Pairing.Tests/AutoBack.Pairing.Tests.csproj" />
+    <Project Path="tests/AutoBack.Access.Tests/AutoBack.Access.Tests.csproj" />
   </Folder>
 </Solution>

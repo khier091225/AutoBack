@@ -23,7 +23,7 @@ public sealed class AgentClient
             !invitation.CertificateSha256.Equals(credentials.CertificateSha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("The pending credential belongs to a different host.");
         return SendAsync(credentials, new(Protocol.Version, "pair", credentials.AgentId, credentials.Secret,
-            invitation.Secret, credentials.Name, Environment.MachineName, "0.8.1-win7-x86"), cancellationToken);
+            invitation.Secret, credentials.Name, Environment.MachineName, "0.8.2-win7-x86"), cancellationToken);
     }
     public Task HeartbeatAsync(AgentCredentials credentials, CancellationToken cancellationToken = default)
         => PollAsync(credentials, null, null, cancellationToken);
@@ -33,7 +33,7 @@ public sealed class AgentClient
     {
         credentials.Validate();
         return SendAsync(credentials, new(Protocol.Version, "heartbeat", credentials.AgentId, credentials.Secret,
-            AgentVersion: "0.8.1-win7-x86", Configuration: configuration, Report: report, CloudConfiguration: cloudConfiguration,
+            AgentVersion: "0.8.2-win7-x86", Configuration: configuration, Report: report, CloudConfiguration: cloudConfiguration,
             CloudReport: cloudReport, LatestRestore: latestRestore, Protection: protection), cancellationToken);
     }
     private static async Task<HostResponse> SendAsync(AgentCredentials credentials, AgentRequest request, CancellationToken token)

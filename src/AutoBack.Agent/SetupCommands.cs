@@ -26,6 +26,7 @@ internal static class SetupCommands
             var action = FolderSelection.ChooseSetupAction(saved, state);
             if (action == "cancel") return 2;
             if (action == "pair-again") return await Program.Main(["re-pair", .. scope]);
+            if (action == "google-sign-in") return await Program.Main(["drive-connect", .. scope]);
         }
         if (saved is null)
         {
@@ -42,9 +43,7 @@ internal static class SetupCommands
             if (new AutoBack.Drive.GoogleAuthorization(store, http).Status().State != "Connected")
             { var code = await Program.Main(["drive-connect", .. scope]); if (code != 0) return code; }
         }
-        Console.WriteLine(plan.Target == BackupTargets.GoogleDrive
-            ? "Client setup saved. In service mode, grant LocalService Read/list access to every source. Temporary storage is managed automatically."
-            : "Client setup saved. In service mode, grant LocalService Read/list access to every source and Modify access to the backup destination.");
+        Console.WriteLine("Client setup saved. Installed setup checks the Agent service account's access again before starting. Use Check access / Grant required access when changing folders.");
         Console.WriteLine("Use encryption-enable with a recovery export and retention-configure if desired. See docs/AUTOMATION-ROLLOUT.md.");
         return 0;
     }

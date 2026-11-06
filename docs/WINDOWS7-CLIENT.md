@@ -2,7 +2,7 @@
 
 This separate **x86 .NET Framework 4.8 agent** connects to the current v0.8 host using protocol 4 and pinned TLS 1.2. The host stays on its existing supported modern Windows PC. The ordinary `win-x64` installer cannot run on Windows 7; changing its CPU target alone is insufficient.
 
-Package: `artifacts/installers/AutoBack-Agent-Legacy-0.8.1-win-x86.msi`.
+Package: `artifacts/installers/AutoBack-Agent-Legacy-0.8.3-win-x86.msi`.
 
 **Status:** built for Windows 7 SP1 x86. Automated checks run in actual 32-bit Framework processes on the development Windows PC. Actual Windows 7 installation, Schannel/Google connectivity, service startup and reboot checks remain required before rollout. This is not a claim of Microsoft support: Windows 7 itself is out of support.
 
@@ -23,7 +23,7 @@ Microsoft references: [.NET Framework system requirements](https://learn.microso
 3. Transfer a fresh invitation to that client. Invitations expire in five minutes, are single-use, and are replaced when another invitation is generated. Pair clients one at a time.
 4. Open **Configure AutoBack Agent** in the **AutoBack Agent Legacy** Start Menu folder and approve administrator elevation. This shortcut uses a native Framework launcher; no PowerShell upgrade is needed for normal setup.
 5. Choose the invitation, then choose source folders. **Google Drive is the default**, with automatic private temporary storage; select the Desktop OAuth JSON and complete sign-in. **Local only** asks for a separate permanent destination and does not require Google.
-6. Grant `NT AUTHORITY\LocalService` Read/list permission on each source. For Local only, also grant Modify permission on the backup destination. Setup does not silently grant permissions to all user files.
+6. Use **Check access** / **Grant required access** in the folder window. v0.8.2 checks the real `LocalService` identity, lists unreadable/locked/unsupported files and prepares only the required source/parent/destination permissions. Resolve every issue before saving. See [folder access setup](FOLDER-ACCESS.md).
 7. Type `START` only after those permissions are ready. Setup enables delayed automatic startup and starts the service. The host should show Online after its first authenticated heartbeat.
 
 The service is installed **stopped, Manual** until setup completes. Pairing/configuration/keys use `%PROGRAMDATA%\AutoBack\Agent` with machine DPAPI and restricted ACLs. Existing stores and backup files are retained across uninstall. Do not copy DPAPI stores between PCs. Console/current-user pairing is a separate scope.

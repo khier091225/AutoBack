@@ -73,8 +73,8 @@ On authorized idle runs, the worker checks retention after journal changes and o
 
 Built MSI files are in `artifacts\installers`:
 
-- `AutoBack-Host-0.8.1-win-x64.msi`
-- `AutoBack-Agent-0.8.1-win-x64.msi`
+- `AutoBack-Host-0.8.3-win-x64.msi`
+- `AutoBack-Agent-0.8.3-win-x64.msi`
 - `SHA256SUMS.txt` — SHA-256 checksums for transfer verification.
 
 Both are machine-wide x64 installers and require administrator access. Applications are self-contained; client PCs do not need the .NET SDK. Code is installed under **Program Files**. Start Menu entries launch the host, client setup and the rollout guide. MSI repair/uninstall handles application files and service registration; credential stores, recovery exports, source files, backup archives and cloud data are retained. Uninstall does not revoke pairing: revoke it on the host when retiring a client. The installers are unsigned pilot artifacts unless separately signed by your release process; organizational signing/distribution policy must be applied before broad rollout.
@@ -85,7 +85,7 @@ Both are machine-wide x64 installers and require administrator access. Applicati
 
 **Removed/revoked client:** v0.8.1 adds **Pair AutoBack Agent again** and a pairing recovery option inside Configure. A fresh host invitation replaces the revoked identity while keeping folders, Google grants, recovery keys and backup files. Old pending jobs/uploads are archived instead of replayed under the new identity. Follow [pairing recovery](PAIRING-RECOVERY.md); a clean reinstall or store deletion is unnecessary.
 
-Before typing `START` in the setup helper, grant LocalService Read/list access to the selected source and Modify access to the backup destination using Windows Security settings. The helper does not broaden folder ACLs. `START` enables delayed automatic service startup and starts the worker. If setup is cancelled, it stays stopped and saved partial setup is retained. Close editing applications and perform the pilot backup/restore checks before enabling schedules or retention.
+In v0.8.2 use **Check access** / **Grant required access** in the folder window. Service-mode Save requires a successful check as LocalService, and installed setup checks again before offering `START`. Permission changes are limited to selected sources/destination and required parent metadata access, with a protected audit. A failed check leaves the service stopped; resolve its listed issues first. `START` enables delayed automatic service startup and starts the worker. Cancel preserves saved settings and restarts a previously running service. See [folder access checks](FOLDER-ACCESS.md), then perform the pilot backup/restore checks before enabling schedules or retention.
 
 **Host setup:** launch **AutoBack Host** under the intended Windows operator account; its DPAPI identity/registry is per Windows account. Keep the same account during upgrades. The GUI must stay open for scheduling; configure Windows sign-in/startup for that account if appropriate. LAN clients need the host's TCP 47831 reachable on the Private/Domain network; the optional installed `scripts\Enable-HostFirewall.ps1` helper must be run deliberately by an administrator. Public-network access is not opened automatically.
 
@@ -106,7 +106,7 @@ Run the eight executable test suites in README, then use [the rollout checklist]
 
 ## Validation evidence
 
-Eight executable test suites cover the release, including default Google Drive/local-only isolation and verified temporary cleanup. The three-process pilot completed six scheduled backups, recovered each client's files, and exercised offline queuing/reconnect; evidence is in `artifacts/automation-validation/multi-client-result.json`. Package inspection is in `artifacts/installers/package-validation.json`. Per-client source selection is described in [Choose folders](SELECT-FOLDERS.md).
+Twelve executable test suites cover the release, including folder access/ACL preparation, pairing recovery, x86 Framework compatibility, default Google Drive/local-only isolation and verified temporary cleanup. The three-process pilot completed six scheduled backups, recovered each client's files, and exercised offline queuing/reconnect; evidence is in `artifacts/automation-validation/multi-client-result.json`. Package inspection is in `artifacts/installers/package-validation.json`. Per-client source selection is described in [Choose folders](SELECT-FOLDERS.md). Elevated service-identity grant/check and actual Windows 7 installation remain target-PC checks.
 
 A live Google account drill on November 5, 2026 used a new isolated validation client/store and synthetic files only. The published client created and uploaded two authenticated encrypted versions, then kept one local/cloud version using explicit test retention settings. Only that validation client's old local file was pruned and old remote file moved to Drive Trash. A separate client store imported the recovery export and downloaded/decrypted/restored the newest version (two files, 110 bytes), passed independent source-hash comparisons and `verify-restore`. The original client settings and prior backups were preserved. Evidence: `artifacts/live-automation-test-1793864952400/result.json`. Validation-only keys/account remain in dedicated DPAPI stores under `%LOCALAPPDATA%\AutoBack\Validation`; no key/passphrase is written to evidence files. This live drill does not claim physical-PC or service-install validation.
 

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.1', [switch]$SkipPublish,
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.3', [switch]$SkipPublish,
     [ValidateSet('Both','Host','Agent','AgentLegacy')][string]$TargetPackage = 'Both')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -128,10 +128,12 @@ foreach ($role in $roles) {
         Add-Node $shortcut Shortcut @{ Id = 'SetupAgent'; Name = 'Configure AutoBack Agent'; Target = ('[#F' + (StableId "$role/$main") + ']'); Arguments = 'installed-setup'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
         Add-Node $shortcut Shortcut @{ Id = 'ChooseBackupFolders'; Name = 'Choose AutoBack backup folders'; Target = ('[#F' + (StableId "$role/$main") + ']'); Arguments = 'installed-setup --folders-only'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
         Add-Node $shortcut Shortcut @{ Id = 'PairAgentAgain'; Name = 'Pair AutoBack Agent again'; Target = ('[#F' + (StableId "$role/$main") + ']'); Arguments = 'installed-setup --pair-again'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
+        Add-Node $shortcut Shortcut @{ Id = 'ReconnectGoogle'; Name = 'Reconnect AutoBack Google Drive'; Target = ('[#F' + (StableId "$role/$main") + ']'); Arguments = 'installed-setup --reconnect-google'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
     } else {
         Add-Node $shortcut Shortcut @{ Id = 'SetupAgent'; Name = 'Configure AutoBack Agent'; Target = '[System64Folder]WindowsPowerShell\v1.0\powershell.exe'; Arguments = '-NoProfile -File "[INSTALLFOLDER]scripts\Configure-InstalledAgent.ps1"'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
         Add-Node $shortcut Shortcut @{ Id = 'ChooseBackupFolders'; Name = 'Choose AutoBack backup folders'; Target = '[System64Folder]WindowsPowerShell\v1.0\powershell.exe'; Arguments = '-NoProfile -File "[INSTALLFOLDER]scripts\Configure-InstalledAgent.ps1" -FoldersOnly'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
         Add-Node $shortcut Shortcut @{ Id = 'PairAgentAgain'; Name = 'Pair AutoBack Agent again'; Target = '[System64Folder]WindowsPowerShell\v1.0\powershell.exe'; Arguments = '-NoProfile -File "[INSTALLFOLDER]scripts\Configure-InstalledAgent.ps1" -PairAgain'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
+        Add-Node $shortcut Shortcut @{ Id = 'ReconnectGoogle'; Name = 'Reconnect AutoBack Google Drive'; Target = '[System64Folder]WindowsPowerShell\v1.0\powershell.exe'; Arguments = '-NoProfile -File "[INSTALLFOLDER]scripts\Configure-InstalledAgent.ps1" -ReconnectGoogle'; WorkingDirectory = 'INSTALLFOLDER' } | Out-Null
     }
     $notepadTarget = if ($isLegacy) { '[SystemFolder]notepad.exe' } else { '[System64Folder]notepad.exe' }
     $guide = if ($isLegacy) { 'WINDOWS7-CLIENT.md' } else { 'AUTOMATION-ROLLOUT.md' }

@@ -11,6 +11,8 @@ New setup has two choices per client:
 
 Stop the client agent first. Open **Choose AutoBack backup folders** from its installed Start Menu, or run `AutoBack.Agent.exe configure` from its published folder. Select the mode, add the folders and **Save folders**. The destination field appears only for Local only. Cancel preserves the previous setup.
 
+In v0.8.2 installed setup, **Check access** tests the actual service identity and **Grant required access** prepares the selected paths. Save and service startup are blocked until that check passes. Removing a selection does not undo a permission grant already made. See [folder access checks](FOLDER-ACCESS.md).
+
 Installed setup guides Google-mode clients through account connection before starting the service. In portable mode, use `drive-connect` once after pairing, then `run`. The host's Backup Now requires a connected Google account for Google mode. Local only needs no Google account even if credentials from a previous connection remain saved. An existing pending upload is paused while Local only is selected; explicit cloud restore/sign-in commands remain available.
 
 ```powershell

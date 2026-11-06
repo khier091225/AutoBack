@@ -40,6 +40,26 @@ try
         google.RejectRefresh = true;
         await Reject(() => new GoogleTokenProvider(store, http).GetAsync(account.Key, false, CancellationToken.None), DriveFailure.Authorization);
         Check(auth.Status().State == "Needs sign-in", "revoked refresh grant is surfaced as needs sign-in");
+        File.Delete(file);
+        Uri? signInLink = null;
+        Check(auth.CanReconnect, "saved OAuth app configuration is available for reconnection");
+        await auth.ConnectAsync(openBrowser: async uri =>
+        {
+            var parameters = FakeGoogle.Parse(uri.Query.TrimStart('?'));
+            google.ExpectedChallenge = parameters["code_challenge"];
+            Check(parameters["client_id"] == "test.apps.googleusercontent.com", "reconnection reuses the protected Desktop client without the original JSON");
+            using var browser = new HttpClient();
+            using var accepted = await browser.GetAsync(parameters["redirect_uri"] + "?code=reconnect-code&state=" + Uri.EscapeDataString(parameters["state"]));
+            Check(accepted.IsSuccessStatusCode, "reconnection receives a fresh browser callback");
+        }, signInUrlReady: uri => signInLink = uri);
+        Check(auth.Status().State == "Connected" && signInLink?.Host == "accounts.google.com" && !signInLink.AbsoluteUri.Contains("CLIENT_SECRET_SENTINEL"), "fresh authorization reconnects and exposes a browser link without persistent secrets");
+        var savedAccount = File.ReadAllBytes(Path.Combine(root, "oauth", "drive-account.dat"));
+        using (var cancel = new CancellationTokenSource())
+        {
+            try { await auth.ConnectAsync(cancellationToken: cancel.Token, openBrowser: uri => { cancel.Cancel(); return Task.CompletedTask; }); throw new Exception("Expected cancelled reconnect."); }
+            catch (OperationCanceledException) { }
+        }
+        Check(savedAccount.SequenceEqual(File.ReadAllBytes(Path.Combine(root, "oauth", "drive-account.dat"))), "cancelled reconnection preserves the saved Google account byte for byte");
         auth.Disconnect();
         Check(auth.Status().State == "Not connected", "disconnect removes local credentials");
     });

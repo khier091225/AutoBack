@@ -15,6 +15,7 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "access-identity-worker") return ServiceIdentity.RunWorker(args);
 #if NETFRAMEWORK
             if (args.Length > 0 && args[0] == "installed-setup") return await AutoBack.Legacy.InstalledSetup.RunAsync(args.Skip(1).ToArray());
 #endif
@@ -24,11 +25,12 @@ internal static class Program
                 Console.WriteLine("Windows 7 SP1 x86 legacy client (.NET Framework 4.8). Pilot testing on Windows 7 required.");
 #endif
                 Console.WriteLine("""
-                    AutoBack Agent 0.8.1
+                    AutoBack Agent 0.8.3
                     setup                             Interactive pairing, folders and optional Google sign-in
                     re-pair [--invite <file>]          Pair again; keep folders, Google, keys and backup files
                     pair --invite <file> [--name <name>] [--replace]
                     configure [--mode google-drive|local] [--source <folder> ...] [--destination <local folder>]
+                    access-check | access-grant        Check saved folders; grant service permissions and recheck
                     drive-connect [--client-secrets <Desktop OAuth JSON>]
                     drive-status | drive-disconnect | drive-retry
                     encryption-enable --recovery-file <NEW .abkey file>
@@ -66,6 +68,18 @@ internal static class Program
             if (args[0] == "destination-status")
             { Console.WriteLine(store.Load<BackupPlan>("backup-plan.dat")?.Target ?? "NotConfigured"); return 0; }
             if (args[0] == "setup") return await SetupCommands.ExecuteAsync(options, store);
+            if (args[0] is "access-check" or "access-grant")
+            {
+                using var accessLock = new FileStream(Path.Combine(store.DirectoryPath, ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                var plan = store.Load<BackupPlan>("backup-plan.dat") ?? throw new InvalidOperationException("Choose backup folders first.");
+                var access = new FolderAccess(machine, store);
+                var result = args[0] == "access-grant" ? access.GrantAndCheck(plan) : access.Check(plan);
+                store.Save("folder-access.dat", result);
+                Console.WriteLine(result.Summary);
+                foreach (var issue in result.Issues) Console.WriteLine(issue.Path + ": " + issue.Reason);
+                if (result.AuditFile is not null) Console.WriteLine("Protected permission audit: " + result.AuditFile);
+                return result.Ready ? 0 : 1;
+            }
             if (args[0] == "re-pair")
             {
                 var invitation = options.GetValueOrDefault("--invite") ?? FolderSelection.ChooseInvitation();
@@ -112,10 +126,12 @@ internal static class Program
                     return 0;
                 }
                 if (store.Load<AgentCredentials>("agent.dat") is null) throw new InvalidOperationException("Pair this client with the host before connecting Google Drive.");
-                var clientFile = options.GetValueOrDefault("--client-secrets") ?? FolderSelection.ChooseOAuthFile();
-                if (clientFile is null) { Console.WriteLine("Google Drive setup cancelled. Existing credentials are unchanged."); return 2; }
+                var canReconnect = authorization.CanReconnect;
+                var clientFile = options.GetValueOrDefault("--client-secrets") ?? (canReconnect ? null : FolderSelection.ChooseOAuthFile());
+                if (clientFile is null && !canReconnect) { Console.WriteLine("Google Drive setup cancelled. Existing credentials are unchanged."); return 2; }
                 Console.WriteLine("Opening Google sign-in. Authorize the Drive account that should receive this client's backups.");
-                await authorization.ConnectAsync(clientFile);
+                await authorization.ConnectAsync(clientFile, signInUrlReady: uri =>
+                    Console.WriteLine("If no browser opens, paste this sign-in link into a browser on this PC:\n" + uri.AbsoluteUri));
                 Console.WriteLine($"Google Drive connected as {authorization.Status().Account}. Start the agent: completed local backups will be uploaded automatically.");
                 return 0;
             }
@@ -126,7 +142,7 @@ internal static class Program
                 BackupPlan plan;
                 if (sourcePaths.Count == 0 && destination is null && !options.ContainsKey("--mode"))
                 {
-                    var selection = FolderSelection.ChoosePlan(store.Load<BackupPlan>("backup-plan.dat"), store.DirectoryPath);
+                    var selection = FolderSelection.ChoosePlan(store.Load<BackupPlan>("backup-plan.dat"), store.DirectoryPath, machine, store);
                     if (selection is null) { Console.WriteLine("Folder selection cancelled. Existing configuration is unchanged."); return 2; }
                     plan = selection;
                 }
@@ -140,6 +156,18 @@ internal static class Program
                 }
                 Directory.CreateDirectory(plan.Destination);
                 BackupPlan.CheckNoReparse(plan.Destination);
+                if (machine)
+                {
+                    var access = new FolderAccess(true, store);
+                    var check = options.ContainsKey("--grant-access") ? access.GrantAndCheck(plan) : access.Check(plan);
+                    store.Save("folder-access.dat", check);
+                    if (!check.Ready)
+                    {
+                        Console.Error.WriteLine(check.Summary);
+                        foreach (var issue in check.Issues) Console.Error.WriteLine(issue.Path + ": " + issue.Reason);
+                        throw new InvalidOperationException("Folder settings were not saved. Use the folder manager's Grant required access, or configure with --grant-access, then resolve any remaining locked/inaccessible files.");
+                    }
+                }
                 store.Save("backup-plan.dat", plan);
                 Console.WriteLine($"Backup configured: {BackupTargets.Label(plan.Target)}.\nSource folders ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nDestination: {plan.Summary.Destination}\nStart the agent to report this selection.\n" +
                     (plan.Target == BackupTargets.GoogleDrive ? "Connect Google Drive first with drive-connect. Temporary archives are kept for retries and cleared after confirmed upload." : "Backups stay in the selected local folder. Google Drive uploads are paused."));
@@ -227,7 +255,7 @@ internal static class Program
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
-            if (key is "--machine" or "--replace" or "--password-stdin") options.Add(key, null);
+            if (key is "--machine" or "--replace" or "--password-stdin" or "--grant-access") options.Add(key, null);
             else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file" or "--recovery-file" or "--keep-local" or "--keep-cloud" or "--mode")
             {
                 if (++i == args.Length || args[i].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException($"Missing value for {key}.");

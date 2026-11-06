@@ -70,7 +70,7 @@ internal static class FolderSelection
         return result;
     }
 
-    public static AutoBack.Backup.BackupPlan? ChoosePlan(AutoBack.Backup.BackupPlan? existing, string dataDirectory)
+    public static AutoBack.Backup.BackupPlan? ChoosePlan(AutoBack.Backup.BackupPlan? existing, string dataDirectory, bool serviceMode, AutoBack.Connection.ProtectedStore store)
     {
         AutoBack.Backup.BackupPlan? result = null;
         Exception? error = null;
@@ -79,7 +79,7 @@ internal static class FolderSelection
             try
             {
                 System.Windows.Forms.Application.EnableVisualStyles();
-                using var form = new BackupFoldersForm(existing, dataDirectory);
+                using var form = new BackupFoldersForm(existing, dataDirectory, serviceMode, store);
                 if (form.ShowDialog() == System.Windows.Forms.DialogResult.OK) result = form.SelectedPlan;
             }
             catch (Exception ex) { error = ex; }

@@ -58,6 +58,10 @@ Kung gumamit ng `--data-dir` sa pairing, gamitin ang parehong option sa lahat ng
 
 ## D. Connect Google for Windows Service mode
 
+In v0.8.3, open **Reconnect AutoBack Google Drive** from the Start Menu, or choose **Connect / re-sign in to Google Drive** in Configure AutoBack Agent. This opens sign-in directly without redoing folder selection. Existing clients reuse their protected OAuth Desktop app configuration; first-time setup still asks for the Desktop client JSON. Cancelling or failing sign-in preserves the previously saved account. If the browser does not open automatically, use the sign-in link printed in the setup window in a browser on the same PC while that window remains open. The callback still uses the local listener and PKCE; no authorization code is pasted into AutoBack.
+
+Install the v0.8.3 Agent MSI to retain the LocalService verification fix across repair/reinstallation. Reinstalling the old v0.8.2 MSI restores its old verifier.
+
 Console mode and service mode have separate configuration. Sa elevated PowerShell **sa client PC**:
 
 ```powershell

@@ -22,18 +22,27 @@ public sealed class GoogleAuthorization(ProtectedStore store, HttpClient http)
     }
 
     public void Disconnect() => store.Delete("drive-account.dat");
+    public bool CanReconnect => store.Load<DriveAccount>("drive-account.dat") is not null;
 
-    public async Task ConnectAsync(string clientSecretsPath, CancellationToken cancellationToken = default,
-        Func<Uri, Task>? openBrowser = null)
+    public async Task ConnectAsync(string? clientSecretsPath = null, CancellationToken cancellationToken = default,
+        Func<Uri, Task>? openBrowser = null, Action<Uri>? signInUrlReady = null)
     {
         if (openBrowser is null && !Environment.UserInteractive)
             throw new InvalidOperationException("Run drive-connect from an interactive terminal on the client, not inside the Windows Service.");
-        if (new FileInfo(clientSecretsPath).Length > 64 * 1024) throw new InvalidDataException("OAuth client JSON is too large.");
-        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(clientSecretsPath, cancellationToken));
-        if (!document.RootElement.TryGetProperty("installed", out var installed))
-            throw new InvalidDataException("Select the OAuth JSON for a Desktop app, not a Web application or service account.");
-        var clientId = installed.GetProperty("client_id").GetString();
-        var secret = installed.GetProperty("client_secret").GetString();
+        string? clientId, secret;
+        if (clientSecretsPath is null)
+        {
+            var saved = store.Load<DriveAccount>("drive-account.dat") ?? throw new InvalidOperationException("Choose the Google OAuth Desktop client JSON for the first connection.");
+            clientId = saved.ClientId; secret = saved.ClientSecret;
+        }
+        else
+        {
+            if (new FileInfo(clientSecretsPath).Length > 64 * 1024) throw new InvalidDataException("OAuth client JSON is too large.");
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(clientSecretsPath, cancellationToken));
+            if (!document.RootElement.TryGetProperty("installed", out var installed))
+                throw new InvalidDataException("Select the OAuth JSON for a Desktop app, not a Web application or service account.");
+            clientId = installed.GetProperty("client_id").GetString(); secret = installed.GetProperty("client_secret").GetString();
+        }
         if (clientId is null || !clientId.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal) || clientId.Length > 400 ||
             !BackupStates.ValidText(secret, 1024)) throw new InvalidDataException("Invalid Desktop app client configuration.");
         // OAuth endpoints are fixed; endpoint URLs embedded in the supplied JSON are never trusted.
@@ -53,10 +62,13 @@ public sealed class GoogleAuthorization(ProtectedStore store, HttpClient http)
         };
         var url = new Uri("https://accounts.google.com/o/oauth2/v2/auth?" + string.Join("&", parameters.Select(p => Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value))));
         var callback = ReceiveCodeAsync(listener, state, deadline.Token);
+        signInUrlReady?.Invoke(url);
         if (openBrowser is not null) await openBrowser(url);
         else
         {
             try { Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true }); }
+            // The caller has displayed a usable sign-in URL if shell launching is unavailable.
+            catch (System.ComponentModel.Win32Exception) when (signInUrlReady is not null) { }
             catch (System.ComponentModel.Win32Exception)
             {
                 await deadline.CancelAsync();

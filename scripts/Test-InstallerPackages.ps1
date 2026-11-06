@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$InstallerDirectory, [string]$Version = '0.8.1', [switch]$IncludeLegacy)
+param([string]$InstallerDirectory, [string]$Version = '0.8.3', [switch]$IncludeLegacy)
 $ErrorActionPreference = 'Stop'
 if (-not $InstallerDirectory) { $InstallerDirectory = Join-Path $PSScriptRoot '..\artifacts\installers' }
 $directory = [IO.Path]::GetFullPath($InstallerDirectory)
@@ -49,6 +49,7 @@ foreach ($role in $roles) {
         }
         if (-not ($files | Where-Object Name -match 'AUTOMATION-ROLLOUT.md')) { throw "$role installer is missing its rollout guide." }
         if ($role -ne 'Host') {
+            if (-not ($files | Where-Object Name -match 'FOLDER-ACCESS.md')) { throw 'Agent folder-access setup guide is missing.' }
             $service = @(Read-Rows $database 'SELECT `Name`, `StartType`, `StartName`, `Arguments` FROM `ServiceInstall`' @('Name','Start','Account','Arguments'))
             if ($service.Count -ne 1 -or $service[0].Name -ne 'AutoBackAgent' -or $service[0].Start -ne '3' -or
                 $service[0].Account -ne 'NT AUTHORITY\LocalService' -or $service[0].Arguments -ne 'run --machine') { throw 'Agent service must be installed stopped/manual under LocalService in machine scope.' }
@@ -61,6 +62,8 @@ foreach ($role in $roles) {
             if (-not ($shortcuts | Where-Object Arguments -match ([regex]::Escape($folderArgument)))) { throw 'The direct backup-folder setup shortcut is missing.' }
             $pairArgument = if ($isLegacy) { 'installed-setup --pair-again' } else { '-PairAgain' }
             if (-not ($shortcuts | Where-Object Arguments -match ([regex]::Escape($pairArgument)))) { throw 'The pairing recovery shortcut is missing.' }
+            $googleArgument = if ($isLegacy) { 'installed-setup --reconnect-google' } else { '-ReconnectGoogle' }
+            if (-not ($shortcuts | Where-Object Arguments -match ([regex]::Escape($googleArgument)))) { throw 'The direct Google reconnection shortcut is missing.' }
             if ($isLegacy) {
                 if (-not ($files | Where-Object Name -match 'AutoBack.Agent.exe.config') -or -not ($files | Where-Object Name -match 'WINDOWS7-CLIENT.md') -or
                     -not ($files | Where-Object Name -match 'BouncyCastle.Cryptography.dll') -or ($files | Where-Object Name -match 'coreclr.dll|hostfxr.dll')) { throw 'Legacy Framework configuration/runtime inventory mismatch.' }

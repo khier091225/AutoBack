@@ -32,6 +32,11 @@ internal static class Program
             var source1 = Path.Combine(root, "Documents"); var source2 = Path.Combine(root, "Work"); Directory.CreateDirectory(source1); Directory.CreateDirectory(source2);
             System.IO.File.WriteAllBytes(Path.Combine(source1, "same-name.bin"), RandomNumberGenerator.GetBytes(2 * ArchiveFile.ChunkSize + 111));
             File.WriteAllText(Path.Combine(source2, "same-name.txt"), "Synthetic legacy test data.");
+            var accessPlan = BackupPlan.CreateForTarget([source1, source2], BackupTargets.LocalOnly, Path.Combine(root, "access-destination"), Path.Combine(root, "access-store"));
+            var access = new FolderAccess(false);
+            Check(access.Check(accessPlan) is { Ready: true, Files: 2 }, "Framework access checker opens both sources and verifies destination write/delete");
+            using (var locked = new FileStream(Path.Combine(source2,"same-name.txt"),FileMode.Open,FileAccess.ReadWrite,FileShare.None))
+                Check(!access.Check(accessPlan).Ready, "Framework access checker refuses a locked file");
             using (var form = new BackupFoldersForm(dataDirectory: Path.Combine(root, "ui")))
             { form.AddFolder(source1); Check(form.GoogleDriveMode.Checked && form.TryBuildPlan(out var picked) && picked!.Target == BackupTargets.GoogleDrive, "Framework folder picker defaults to Google Drive"); }
             SynchronizationContext.SetSynchronizationContext(null);

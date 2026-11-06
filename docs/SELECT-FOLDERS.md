@@ -4,7 +4,7 @@ Each client keeps its **own list of 1–20 source folders** and a destination mo
 
 ## Simple setup on each client
 
-1. Update host/client to v0.8. For an MSI-installed client, open **Start Menu → AutoBack Agent → Choose AutoBack backup folders** and approve the administrator prompt. The helper stops the service while editing, connects Google if cloud mode needs sign-in, and asks to type `START` after source permissions are ready. Cancel preserves the previous setup and restarts a service that was running.
+1. Update the client to v0.8.2. For an MSI-installed client, open **Start Menu → AutoBack Agent → Choose AutoBack backup folders** and approve the administrator prompt. The helper stops the service while editing, connects Google if cloud mode needs sign-in, and checks actual service-account folder access before offering `START`. Cancel preserves the previous setup and restarts a service that was running. Use **Check access** or **Grant required access** in the folder window; service-mode Save requires a successful result. See [folder access checks](FOLDER-ACCESS.md).
 
 For the portable console agent, open PowerShell in its published folder and run:
 
