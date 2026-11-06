@@ -1,5 +1,7 @@
 # Host and client connection setup
 
+**Accidentally removed a paired computer?** A clean reinstall is unnecessary. In client v0.8.1 use **Pair AutoBack Agent again**, or **Configure → Pair again with a host invitation**. See [pairing recovery](PAIRING-RECOVERY.md) for preserved settings/backups, retired pending work and the installed/portable steps.
+
 For an installed **Windows 7 SP1 32-bit** client, follow the [legacy client guide](WINDOWS7-CLIENT.md). Its native **Configure AutoBack Agent** shortcut selects the same fresh host invitation and starts the service after setup/permissions. The host remains the current modern Windows application.
 
 Pairing, live monitoring, local backup, direct Google Drive upload, and verified recovery are available. Follow [local backup setup](LOCAL-BACKUP.md) after pairing, then [Google Drive setup](GOOGLE-DRIVE-SETUP.md) to authorize each client and [restore guide](RESTORE.md) to test recovery.

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$InstallerDirectory, [string]$Version = '0.8.0', [switch]$IncludeLegacy)
+param([string]$InstallerDirectory, [string]$Version = '0.8.1', [switch]$IncludeLegacy)
 $ErrorActionPreference = 'Stop'
 if (-not $InstallerDirectory) { $InstallerDirectory = Join-Path $PSScriptRoot '..\artifacts\installers' }
 $directory = [IO.Path]::GetFullPath($InstallerDirectory)
@@ -59,6 +59,8 @@ foreach ($role in $roles) {
             $shortcuts = @(Read-Rows $database 'SELECT `Arguments` FROM `Shortcut`' @('Arguments'))
             $folderArgument = if ($isLegacy) { 'installed-setup --folders-only' } else { '-FoldersOnly' }
             if (-not ($shortcuts | Where-Object Arguments -match ([regex]::Escape($folderArgument)))) { throw 'The direct backup-folder setup shortcut is missing.' }
+            $pairArgument = if ($isLegacy) { 'installed-setup --pair-again' } else { '-PairAgain' }
+            if (-not ($shortcuts | Where-Object Arguments -match ([regex]::Escape($pairArgument)))) { throw 'The pairing recovery shortcut is missing.' }
             if ($isLegacy) {
                 if (-not ($files | Where-Object Name -match 'AutoBack.Agent.exe.config') -or -not ($files | Where-Object Name -match 'WINDOWS7-CLIENT.md') -or
                     -not ($files | Where-Object Name -match 'BouncyCastle.Cryptography.dll') -or ($files | Where-Object Name -match 'coreclr.dll|hostfxr.dll')) { throw 'Legacy Framework configuration/runtime inventory mismatch.' }

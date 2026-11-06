@@ -2,6 +2,14 @@ namespace AutoBack.Agent;
 
 internal static class FolderSelection
 {
+    internal static string ChooseSetupAction(AutoBack.Connection.AgentCredentials saved, string status)
+    {
+        return SelectOnSta(() =>
+        {
+            using var form = new PairingSetupForm(saved.Name, saved.Host, status);
+            return form.ShowDialog() == System.Windows.Forms.DialogResult.OK ? form.SelectedAction : null;
+        }) ?? "cancel";
+    }
     internal static System.Windows.Forms.FolderBrowserDialog CreateFolderPicker(string description)
     {
         var picker = new System.Windows.Forms.FolderBrowserDialog { Description = description };

@@ -2,7 +2,9 @@
 
 A Windows host dashboard and background client agent for centrally controlled file and folder backups. Intended flow: **host → client command; client → Google Drive upload; client → host progress**.
 
-## Current milestone: Google Drive default and Local only (v0.8)
+## Current milestone: pairing recovery (v0.8.1)
+
+Removed a client from the host? Use the new **Pair AutoBack Agent again** shortcut or the recovery option in Configure. Folders, Google sign-in, encryption keys and backup files are retained; previous jobs/uploads are protected and retired from automatic processing under the new identity. See [pairing recovery](docs/PAIRING-RECOVERY.md).
 
 - An embedded host listener on TCP **47831**, active while the WPF host is open.
 - A client agent that connects outbound and reports an authenticated heartbeat every **5 seconds**.
@@ -38,9 +40,9 @@ The automated console pilot also ran **three real agent processes on one physica
 
 ## First run
 
-For the prepared pilot installers, use `artifacts\installers\AutoBack-Host-0.8.0-win-x64.msi` and `AutoBack-Agent-0.8.0-win-x64.msi`. Verify the adjacent `SHA256SUMS.txt` and follow **[automation/deployment setup](docs/AUTOMATION-ROLLOUT.md)** and **[physical-PC rollout checklist](docs/ROLLOUT-CHECKLIST.md)**. The agent MSI starts stopped/manual; its setup helper pairs/configures the client and enables automatic startup after source access is ready. Google mode manages staging permissions; Local only also needs destination access. Console-mode development instructions follow.
+For the prepared pilot installers, use `artifacts\installers\AutoBack-Host-0.8.1-win-x64.msi` and `AutoBack-Agent-0.8.1-win-x64.msi`. Verify the adjacent `SHA256SUMS.txt` and follow **[automation/deployment setup](docs/AUTOMATION-ROLLOUT.md)** and **[physical-PC rollout checklist](docs/ROLLOUT-CHECKLIST.md)**. The agent MSI starts stopped/manual; its setup helper pairs/configures the client and enables automatic startup after source access is ready. Google mode manages staging permissions; Local only also needs destination access. Console-mode development instructions follow.
 
-For a Windows 7 SP1 x86 client, use **`AutoBack-Agent-Legacy-0.8.0-win-x86.msi`**, install Framework 4.8 first, then follow the [legacy guide](docs/WINDOWS7-CLIENT.md). The host stays on modern Windows. The legacy setup shortcut is native and does not require a PowerShell upgrade.
+For a Windows 7 SP1 x86 client, use **`AutoBack-Agent-Legacy-0.8.1-win-x86.msi`**, install Framework 4.8 first, then follow the [legacy guide](docs/WINDOWS7-CLIENT.md). The host stays on modern Windows. The legacy setup shortcut is native and does not require a PowerShell upgrade.
 
 On the host, open `AutoBack.slnx` in Visual Studio and run the **AutoBack** project, or:
 
@@ -97,6 +99,7 @@ dotnet run --project tests/AutoBack.Destinations.Tests/AutoBack.Destinations.Tes
 dotnet run --project tests/AutoBack.Desktop.Tests/AutoBack.Desktop.Tests.csproj -c Release
 .\tests\AutoBack.Legacy.UnitTests\bin\Release\net48\AutoBack.Legacy.UnitTests.exe
 dotnet run --project tests/AutoBack.Legacy.IntegrationTests -c Release
+dotnet run --project tests/AutoBack.Pairing.Tests -c Release
 ```
 
 The connection suite uses real TLS sockets and an actual agent subprocess. It checks invitation replay/expiry/cancellation, concurrent pairing, rejected credentials and pins, timeouts, host restart, revocation, protected storage, malformed frames, and reconnect. The backup suite checks real archive contents/checksums, version preservation, locked/changed files, cancellation, cleanup, job replay, interrupted recovery, and a host-triggered backup using the actual agent executable. The desktop suite exercises the real Backup action and job results in WPF, including the 20-second offline transition, and refreshes screenshots. All use isolated temporary data and loopback ports.

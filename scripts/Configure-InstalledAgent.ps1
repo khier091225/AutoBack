@@ -1,11 +1,13 @@
 [CmdletBinding()]
-param([switch]$FoldersOnly)
+param([switch]$FoldersOnly, [switch]$PairAgain)
 $ErrorActionPreference = 'Stop'
+if ($FoldersOnly -and $PairAgain) { throw 'Choose folder setup or pairing recovery, not both.' }
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     # This shortcut is an interactive setup tool: the operator must see folder pickers and sign-in.
     $elevatedArguments = @('-NoProfile', '-File', ('"{0}"' -f $PSCommandPath))
     if ($FoldersOnly) { $elevatedArguments += '-FoldersOnly' }
+    if ($PairAgain) { $elevatedArguments += '-PairAgain' }
     Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Verb RunAs -ArgumentList $elevatedArguments
     exit
 }
@@ -17,10 +19,10 @@ if ($service.Status -ne 'Stopped') {
     Stop-Service -Name AutoBackAgent
     $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(30))
 }
-if ($FoldersOnly) { & $agent configure --machine } else { & $agent setup --machine }
-if ($FoldersOnly -and $LASTEXITCODE -eq 2) {
+if ($FoldersOnly) { & $agent configure --machine } elseif ($PairAgain) { & $agent re-pair --machine } else { & $agent setup --machine }
+if ($LASTEXITCODE -eq 2) {
     if ($wasRunning) { Start-Service -Name AutoBackAgent }
-    Write-Output 'Folder selection cancelled. Existing settings were preserved; a previously running service was restarted.'
+    Write-Output 'Setup cancelled. A previously running service was restarted with the saved configuration.'
     Read-Host 'Press Enter to close'
     exit 0
 }

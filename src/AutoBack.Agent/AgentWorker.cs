@@ -65,7 +65,7 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
                 var seconds = Math.Min(30, 1 << failures) + Random.Shared.NextDouble();
                 var reason = ex switch
                 {
-                    AgentRejectedException => "host rejected the request; check pairing and update both host and agent to the same version",
+                    AgentRejectedException => "host rejected the request; if removed from the host, use Pair AutoBack Agent again with a fresh invitation; also check compatible host/client versions",
                     System.Security.Authentication.AuthenticationException => "host certificate verification failed",
                     OperationCanceledException => "request timed out",
                     _ => "host unavailable"

@@ -2,7 +2,7 @@
 
 This separate **x86 .NET Framework 4.8 agent** connects to the current v0.8 host using protocol 4 and pinned TLS 1.2. The host stays on its existing supported modern Windows PC. The ordinary `win-x64` installer cannot run on Windows 7; changing its CPU target alone is insufficient.
 
-Package: `artifacts/installers/AutoBack-Agent-Legacy-0.8.0-win-x86.msi`.
+Package: `artifacts/installers/AutoBack-Agent-Legacy-0.8.1-win-x86.msi`.
 
 **Status:** built for Windows 7 SP1 x86. Automated checks run in actual 32-bit Framework processes on the development Windows PC. Actual Windows 7 installation, Schannel/Google connectivity, service startup and reboot checks remain required before rollout. This is not a claim of Microsoft support: Windows 7 itself is out of support.
 
@@ -29,6 +29,8 @@ Microsoft references: [.NET Framework system requirements](https://learn.microso
 The service is installed **stopped, Manual** until setup completes. Pairing/configuration/keys use `%PROGRAMDATA%\AutoBack\Agent` with machine DPAPI and restricted ACLs. Existing stores and backup files are retained across uninstall. Do not copy DPAPI stores between PCs. Console/current-user pairing is a separate scope.
 
 **Choose AutoBack backup folders** opens just the mode/source picker later. Pairing persists across restarts. Keep the host open for monitoring and new scheduled/manual backup commands. Existing source, retention and encryption settings remain explicit; the installer does not enable a production schedule or encryption policy.
+
+If this computer is accidentally removed from the host, use **Pair AutoBack Agent again** with a fresh invitation. Configure also offers a pairing-recovery choice. Existing folders, Google sign-in, keys and backup files are kept; old pending jobs/uploads are protected and retired. See [pairing recovery](PAIRING-RECOVERY.md).
 
 ## Compatibility behavior
 

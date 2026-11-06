@@ -24,8 +24,9 @@ internal static class Program
                 Console.WriteLine("Windows 7 SP1 x86 legacy client (.NET Framework 4.8). Pilot testing on Windows 7 required.");
 #endif
                 Console.WriteLine("""
-                    AutoBack Agent 0.8
+                    AutoBack Agent 0.8.1
                     setup                             Interactive pairing, folders and optional Google sign-in
+                    re-pair [--invite <file>]          Pair again; keep folders, Google, keys and backup files
                     pair --invite <file> [--name <name>] [--replace]
                     configure [--mode google-drive|local] [--source <folder> ...] [--destination <local folder>]
                     drive-connect [--client-secrets <Desktop OAuth JSON>]
@@ -57,9 +58,23 @@ internal static class Program
                 Environment.GetFolderPath(machine ? Environment.SpecialFolder.CommonApplicationData : Environment.SpecialFolder.LocalApplicationData),
                 "AutoBack", "Agent");
             var store = new ProtectedStore(directory, machine);
+            if (store.Load<PairingTransition>(PairingRecovery.TransitionFile) is not null)
+            {
+                using var recoveryLock = new FileStream(Path.Combine(store.DirectoryPath, ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                PairingRecovery.Complete(store);
+            }
             if (args[0] == "destination-status")
             { Console.WriteLine(store.Load<BackupPlan>("backup-plan.dat")?.Target ?? "NotConfigured"); return 0; }
             if (args[0] == "setup") return await SetupCommands.ExecuteAsync(options, store);
+            if (args[0] == "re-pair")
+            {
+                var invitation = options.GetValueOrDefault("--invite") ?? FolderSelection.ChooseInvitation();
+                if (invitation is null) return 2;
+                var scope = new List<string> { "pair", "--replace", "--invite", invitation, "--data-dir", directory };
+                if (machine) scope.Add("--machine");
+                scope.Add("--name"); scope.Add(options.GetValueOrDefault("--name") ?? store.Load<AgentCredentials>("agent.dat")?.Name ?? Environment.MachineName);
+                return await Main(scope.ToArray());
+            }
             if (args[0] is "encryption-enable" or "encryption-disable" or "recovery-export" or "recovery-import" or "retention-configure" or "protection-status")
             {
                 if (args[0] == "protection-status") return ProtectionCommands.Execute(args[0], options, store);
@@ -145,22 +160,28 @@ internal static class Program
             using var instance = new FileStream(Path.Combine(Path.GetFullPath(directory), ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             if (args[0] == "pair")
             {
-                if (store.Load<AgentCredentials>("agent.dat") is not null && !options.ContainsKey("--replace"))
-                    throw new InvalidOperationException("This agent is already paired. Use run, or stop the agent and use pair --replace for a new pairing.");
+                var previous = store.Load<AgentCredentials>("agent.dat");
+                if (previous is not null && !options.ContainsKey("--replace"))
+                    throw new InvalidOperationException("This agent has a saved pairing. If removed from the host, stop the worker and use re-pair with a fresh host invitation, or open Pair AutoBack Agent again. Settings and backup files are kept.");
                 var invitationPath = options.GetValueOrDefault("--invite") ?? throw new ArgumentException("Provide --invite <file>.");
                 if (new FileInfo(invitationPath).Length > Protocol.MaxFrameLength) throw new InvalidDataException("Invitation file is too large.");
                 var invitation = JsonSerializer.Deserialize<PairingInvitation>(await File.ReadAllTextAsync(invitationPath), Protocol.Json)
                     ?? throw new InvalidDataException("Empty invitation.");
                 invitation.Validate();
-                var name = options.GetValueOrDefault("--name") ?? Environment.MachineName;
+                var name = options.GetValueOrDefault("--name") ?? previous?.Name ?? Environment.MachineName;
                 var pending = store.Load<AgentCredentials>("pending.dat");
                 var credentials = pending is not null && pending.Host == invitation.Host && pending.Port == invitation.Port &&
-                    pending.CertificateSha256 == invitation.CertificateSha256 && pending.Name == name
+                    pending.CertificateSha256 == invitation.CertificateSha256 && pending.Name == name && pending.AgentId != previous?.AgentId
                     ? pending : AgentClient.CreateCredentials(invitation, name);
+                var archive = previous is null ? null : PairingRecovery.Capture(store, previous);
                 store.Save("pending.dat", credentials);
                 await new AgentClient().PairAsync(invitation, credentials);
-                store.Save("agent.dat", credentials);
-                store.Delete("pending.dat");
+                if (archive is not null)
+                {
+                    PairingRecovery.Replace(store, credentials, archive);
+                    Console.WriteLine("Paired again. Folders, Google sign-in, encryption keys and backup files were kept. Old jobs/uploads are preserved in protected pairing-history; they will not replay under the new identity.");
+                }
+                else { store.Save("agent.dat", credentials); store.Delete("pending.dat"); }
                 Console.WriteLine($"Paired {credentials.Name} with {credentials.Host}:{credentials.Port}. Start with 'run' using the same --machine/--data-dir options. Delete the used invitation file.");
                 return 0;
             }

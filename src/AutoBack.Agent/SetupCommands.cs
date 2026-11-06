@@ -9,7 +9,25 @@ internal static class SetupCommands
         var scope = new List<string>();
         if (options.ContainsKey("--machine")) scope.Add("--machine");
         if (options.GetValueOrDefault("--data-dir") is { } directory) { scope.Add("--data-dir"); scope.Add(directory); }
-        if (store.Load<AgentCredentials>("agent.dat") is null)
+        if (options.ContainsKey("--replace"))
+        {
+            if (options.GetValueOrDefault("--invite") is { } invite) { scope.Add("--invite"); scope.Add(invite); }
+            if (options.GetValueOrDefault("--name") is { } name) { scope.Add("--name"); scope.Add(name); }
+            return await Program.Main(["re-pair", .. scope]);
+        }
+        var saved = store.Load<AgentCredentials>("agent.dat");
+        if (saved is not null)
+        {
+            var state = "Saved pairing";
+            try { Console.WriteLine("Checking the saved host connection..."); await new AgentClient().HeartbeatAsync(saved); state = "Connected to host"; }
+            catch (AgentRejectedException) { state = "Host rejected this pairing. It may have been removed from the host."; }
+            catch (Exception error) when (error is IOException or System.Net.Sockets.SocketException or System.Security.Authentication.AuthenticationException or OperationCanceledException)
+            { state = "Could not verify the host connection. Check the host app, network and invitation address."; }
+            var action = FolderSelection.ChooseSetupAction(saved, state);
+            if (action == "cancel") return 2;
+            if (action == "pair-again") return await Program.Main(["re-pair", .. scope]);
+        }
+        if (saved is null)
         {
             var invitation = options.GetValueOrDefault("--invite") ?? FolderSelection.ChooseInvitation();
             if (invitation is null) return 2;

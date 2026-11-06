@@ -52,7 +52,7 @@ public partial class MainWindow : Window
     private void RevokeComputer_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: Computer computer }) return;
-        if (MessageBox.Show(this, $"Revoke pairing for {computer.Name}?\n\nIts agent will no longer be authorized. To reconnect, create a new invitation and pair the agent again.",
+        if (MessageBox.Show(this, $"Revoke pairing for {computer.Name}?\n\nIts agent will no longer be authorized. Backup files are kept. To reconnect, create a fresh invitation here, then open 'Pair AutoBack Agent again' on the client (v0.8.1 or newer).",
             "Revoke computer pairing", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         try { _dashboard.Revoke(computer); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

@@ -12,13 +12,15 @@ internal static class InstalledSetup
 {
     internal static async Task<int> RunAsync(string[] args)
     {
-        if (args.Any(a => a != "--folders-only")) throw new ArgumentException("Unknown installed setup option.");
+        if (args.Any(a => a is not ("--folders-only" or "--pair-again"))) throw new ArgumentException("Unknown installed setup option.");
         var foldersOnly = args.Contains("--folders-only");
+        var pairAgain = args.Contains("--pair-again");
+        if (foldersOnly && pairAgain) throw new ArgumentException("Choose folder setup or pairing recovery, not both.");
         using var identity = WindowsIdentity.GetCurrent();
         if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
         {
             var start = new ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location,
-                "installed-setup" + (foldersOnly ? " --folders-only" : "")) { UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory };
+                "installed-setup" + (foldersOnly ? " --folders-only" : pairAgain ? " --pair-again" : "")) { UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory };
             try { Process.Start(start); return 0; }
             catch (System.ComponentModel.Win32Exception) { Console.Error.WriteLine("Administrator access is required for installed client setup."); return 2; }
         }
@@ -28,10 +30,10 @@ internal static class InstalledSetup
             var wasRunning = service.Status == ServiceControllerStatus.Running;
             if (service.Status != ServiceControllerStatus.Stopped)
             { service.Stop(); service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30)); }
-            var result = await Program.Main([foldersOnly ? "configure" : "setup", "--machine"]);
+            var result = await Program.Main([foldersOnly ? "configure" : pairAgain ? "re-pair" : "setup", "--machine"]);
             if (result != 0)
             {
-                if (foldersOnly && result == 2 && wasRunning) service.Start();
+                if (result == 2 && wasRunning) service.Start();
                 Console.WriteLine("Setup cancelled or failed. Existing configuration retained."); return result;
             }
             var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "AutoBack", "Agent");
