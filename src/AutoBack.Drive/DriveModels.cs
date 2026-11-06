@@ -31,7 +31,11 @@ public sealed record UploadResult(string FileId, string WebLink, long Size);
 public static class DriveHttp
 {
     public const string Scope = "https://www.googleapis.com/auth/drive.file";
+#if NETFRAMEWORK
+    public static HttpClient CreateClient() => new(new HttpClientHandler { AllowAutoRedirect = false, SslProtocols = System.Security.Authentication.SslProtocols.Tls12 }) { Timeout = TimeSpan.FromMinutes(3) };
+#else
     public static HttpClient CreateClient() => new(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(3) };
+#endif
     public static bool SafeSessionUri(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
         uri.Scheme == "https" && uri.Host == "www.googleapis.com" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo) &&
         uri.AbsolutePath.StartsWith("/upload/drive/v3/files", StringComparison.Ordinal) && string.IsNullOrEmpty(uri.Fragment);

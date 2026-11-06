@@ -17,11 +17,17 @@ internal static class SetupCommands
             if (code != 0) return code;
         }
         if (await Program.Main(["configure", .. scope]) is var configured && configured != 0) return configured;
-        if (FolderSelection.AskDriveSetup())
+        var plan = store.Load<AutoBack.Backup.BackupPlan>("backup-plan.dat")!;
+        if (plan.Target == BackupTargets.GoogleDrive || (plan.Target == BackupTargets.LegacyBoth && FolderSelection.AskDriveSetup()))
         {
-            var code = await Program.Main(["drive-connect", .. scope]); if (code != 0) return code;
+            using var http = AutoBack.Drive.DriveHttp.CreateClient();
+            if (new AutoBack.Drive.GoogleAuthorization(store, http).Status().State != "Connected")
+            { var code = await Program.Main(["drive-connect", .. scope]); if (code != 0) return code; }
         }
-        Console.WriteLine("Client setup saved. In service mode, grant LocalService read access to the source and Modify access to the destination before starting the service.\nUse encryption-enable with a recovery export and retention-configure if desired. See docs/AUTOMATION-ROLLOUT.md.");
+        Console.WriteLine(plan.Target == BackupTargets.GoogleDrive
+            ? "Client setup saved. In service mode, grant LocalService Read/list access to every source. Temporary storage is managed automatically."
+            : "Client setup saved. In service mode, grant LocalService Read/list access to every source and Modify access to the backup destination.");
+        Console.WriteLine("Use encryption-enable with a recovery export and retention-configure if desired. See docs/AUTOMATION-ROLLOUT.md.");
         return 0;
     }
 }

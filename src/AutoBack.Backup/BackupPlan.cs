@@ -3,13 +3,27 @@ using System.Text.Json;
 
 namespace AutoBack.Backup;
 
-public sealed record BackupPlan(string Source, string Destination, List<string>? SelectedSources = null)
+public sealed record BackupPlan(string Source, string Destination, List<string>? SelectedSources = null, string Target = BackupTargets.LegacyBoth)
 {
     public const string MultipleSourcesGuard = "Multiple source folders require AutoBack 0.7 or newer";
+    public const string TargetGuard = "Destination modes require AutoBack 0.8 or newer";
     public IReadOnlyList<string> Sources => SelectedSources ?? (IReadOnlyList<string>)[Source];
-    public string PlanId => SelectedSources is null ? Protocol.Hash($"v1|{Source.ToUpperInvariant()}|{Destination.ToUpperInvariant()}")
+    public string PlanId => Target != BackupTargets.LegacyBoth ? Protocol.Hash("v3|" + Target + "|" + JsonSerializer.Serialize(Sources.Select(s => s.ToUpperInvariant())) + "|" + Destination.ToUpperInvariant())
+        : SelectedSources is null ? Protocol.Hash($"v1|{Source.ToUpperInvariant()}|{Destination.ToUpperInvariant()}")
         : Protocol.Hash("v2|" + JsonSerializer.Serialize(Sources.Select(s => s.ToUpperInvariant())) + "|" + Destination.ToUpperInvariant());
-    public BackupConfiguration Summary => new(PlanId, SelectedSources is null ? Source : $"{Sources.Count} selected folders", Destination, Sources: Sources.ToList());
+    public BackupConfiguration Summary => new(PlanId, Sources.Count == 1 ? Sources[0] : $"{Sources.Count} selected folders",
+        Target == BackupTargets.GoogleDrive ? "Google Drive" : Destination, Sources: Sources.ToList(), Target: Target);
+    public static string CacheDirectory(string dataDirectory) => Path.Combine(Path.GetFullPath(dataDirectory), "cloud-cache");
+
+    public static BackupPlan CreateForTarget(IEnumerable<string> sources, string target, string? localDestination, string dataDirectory)
+    {
+        if (target is not (BackupTargets.GoogleDrive or BackupTargets.LocalOnly)) throw new ArgumentException("Choose Google Drive or Local only.");
+        var destination = target == BackupTargets.GoogleDrive ? CacheDirectory(dataDirectory)
+            : localDestination ?? throw new ArgumentException("Choose a destination folder for Local only mode.");
+        var old = CreateMany(sources, destination);
+        var plan = new BackupPlan(TargetGuard, old.Destination, old.Sources.ToList(), target);
+        plan.Validate(); return plan;
+    }
 
     public static BackupPlan Create(string source, string destination)
         => CreateMany([source], destination);
@@ -35,7 +49,10 @@ public sealed record BackupPlan(string Source, string Destination, List<string>?
 
     public void Validate()
     {
-        if (SelectedSources is not null && (SelectedSources.Count is < 2 or > 20 || Source != MultipleSourcesGuard))
+        if (!BackupTargets.Valid(Target)) throw new InvalidDataException("Unknown backup destination mode.");
+        if (Target != BackupTargets.LegacyBoth && (SelectedSources is null || SelectedSources.Count is < 1 or > 20 || Source != TargetGuard))
+            throw new InvalidDataException("Destination modes require AutoBack 0.8 or newer. Configure this client again.");
+        if (Target == BackupTargets.LegacyBoth && SelectedSources is not null && (SelectedSources.Count is < 2 or > 20 || Source != MultipleSourcesGuard))
             throw new InvalidDataException("Invalid multi-folder configuration. Use AutoBack 0.7 or newer to configure the client.");
         if (!ValidPath(Destination) || Sources.Any(s => !ValidPath(s)) || !BackupStates.ValidConfiguration(Summary))
             throw new InvalidDataException("The saved backup configuration is invalid. Configure the folders again.");

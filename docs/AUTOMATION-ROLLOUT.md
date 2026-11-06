@@ -1,4 +1,6 @@
-# Automation, encryption, retention and deployment — v0.7
+# Automation, encryption, retention and deployment — v0.8
+
+New setup defaults to Google Drive with automatic temporary storage/cleanup; Local only is the explicit permanent-local option. Read [destination modes](DESTINATION-MODES.md) before setting retention. Google mode ignores permanent local-retention counts; its confirmed cache is always cleaned. Local only pauses automatic uploads/cloud retention. Existing plans and files are preserved until deliberately reconfigured. Update both endpoints to protocol 4/v0.8; saved pairings remain usable.
 
 ## Daily schedules and local backup retries
 
@@ -71,13 +73,15 @@ On authorized idle runs, the worker checks retention after journal changes and o
 
 Built MSI files are in `artifacts\installers`:
 
-- `AutoBack-Host-0.7.0-win-x64.msi`
-- `AutoBack-Agent-0.7.0-win-x64.msi`
+- `AutoBack-Host-0.8.0-win-x64.msi`
+- `AutoBack-Agent-0.8.0-win-x64.msi`
 - `SHA256SUMS.txt` — SHA-256 checksums for transfer verification.
 
 Both are machine-wide x64 installers and require administrator access. Applications are self-contained; client PCs do not need the .NET SDK. Code is installed under **Program Files**. Start Menu entries launch the host, client setup and the rollout guide. MSI repair/uninstall handles application files and service registration; credential stores, recovery exports, source files, backup archives and cloud data are retained. Uninstall does not revoke pairing: revoke it on the host when retiring a client. The installers are unsigned pilot artifacts unless separately signed by your release process; organizational signing/distribution policy must be applied before broad rollout.
 
 **Agent setup:** the MSI installs a stopped **Manual** `AutoBackAgent` service under `NT AUTHORITY\LocalService` with two 60-second crash restarts, then no further recovery action until a manual start (failure count resets after a day). Open **Configure AutoBack Agent** from Start Menu and approve its administrator prompt. Select a fresh host invitation, source/destination folders and optionally the Desktop OAuth JSON for Google sign-in. Pairing and settings use the machine data store. The invitation must be generated just before setup (five-minute expiry).
+
+**Windows 7 SP1 / 32-bit:** use the separate [legacy client MSI and pilot guide](WINDOWS7-CLIENT.md), not the ordinary x64 MSI. It requires Framework 4.8 and uses a native setup launcher instead of the PowerShell helper. The current modern host is reused; Windows 7 service/TLS/browser checks remain pending. Build with `Build-Installers.ps1 -TargetPackage AgentLegacy` and inspect all three packages using `Test-InstallerPackages.ps1 -IncludeLegacy`.
 
 Before typing `START` in the setup helper, grant LocalService Read/list access to the selected source and Modify access to the backup destination using Windows Security settings. The helper does not broaden folder ACLs. `START` enables delayed automatic service startup and starts the worker. If setup is cancelled, it stays stopped and saved partial setup is retained. Close editing applications and perform the pilot backup/restore checks before enabling schedules or retention.
 
@@ -96,11 +100,11 @@ On the development PC with Windows and .NET 10 SDK:
 
 The build pins WiX Toolset 4.0.6 and its matching service extension, publishes both self-contained applications, stages an allowlist of runtime files/docs/setup helpers, writes an installed file inventory and builds native Windows Installer packages. User OAuth JSON, DPAPI `.dat` stores, invitations, `.abkey` files, test archives and recovery folders are excluded. Tool binaries/build stages remain under ignored `artifacts`; the extension cache is managed by WiX in the current user's profile. Building/inspecting packages does not install the product or register a service.
 
-Run the seven executable test suites in README, then use [the rollout checklist](ROLLOUT-CHECKLIST.md) on at least two physical PCs. The local automated pilot uses three isolated client processes/stores and real TLS sockets on **one** physical PC; it is not a substitute for LAN, ACL, reboot, installer/service and long-duration testing on target machines.
+Run the eight executable test suites in README, then use [the rollout checklist](ROLLOUT-CHECKLIST.md) on at least two physical PCs. The local automated pilot uses three isolated client processes/stores and real TLS sockets on **one** physical PC; it is not a substitute for LAN, ACL, reboot, installer/service and long-duration testing on target machines.
 
 ## Validation evidence
 
-Seven executable test suites cover the current release. The three-process pilot completed six scheduled backups, recovered each client's files, and exercised offline queuing and reconnect; evidence is in `artifacts/automation-validation/multi-client-result.json`. The built MSI databases are inspected with `Test-InstallerPackages.ps1`; results are in `artifacts/installers/package-validation.json`. Per-client source selection and its direct Start Menu shortcut are described in [Choose folders](SELECT-FOLDERS.md).
+Eight executable test suites cover the release, including default Google Drive/local-only isolation and verified temporary cleanup. The three-process pilot completed six scheduled backups, recovered each client's files, and exercised offline queuing/reconnect; evidence is in `artifacts/automation-validation/multi-client-result.json`. Package inspection is in `artifacts/installers/package-validation.json`. Per-client source selection is described in [Choose folders](SELECT-FOLDERS.md).
 
 A live Google account drill on November 5, 2026 used a new isolated validation client/store and synthetic files only. The published client created and uploaded two authenticated encrypted versions, then kept one local/cloud version using explicit test retention settings. Only that validation client's old local file was pruned and old remote file moved to Drive Trash. A separate client store imported the recovery export and downloaded/decrypted/restored the newest version (two files, 110 bytes), passed independent source-hash comparisons and `verify-restore`. The original client settings and prior backups were preserved. Evidence: `artifacts/live-automation-test-1793864952400/result.json`. Validation-only keys/account remain in dedicated DPAPI stores under `%LOCALAPPDATA%\AutoBack\Validation`; no key/passphrase is written to evidence files. This live drill does not claim physical-PC or service-install validation.
 

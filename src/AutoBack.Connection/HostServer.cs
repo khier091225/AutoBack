@@ -101,7 +101,7 @@ public sealed partial class HostServer : IAsyncDisposable
                 a.AgentVersion, a.Address, a.PairedUtc, a.LastSeenUtc,
                 IsRunning && _seenThisRun.Contains(a.Id) && a.LastSeenUtc.HasValue && now - a.LastSeenUtc.Value < _offlineAfter,
                 a.Configuration, _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id),
-                _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed"), a.CloudConfiguration,
+                _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed" && (j.Report.Target != BackupTargets.GoogleDrive || j.Cloud?.State == "Completed")), a.CloudConfiguration,
                 _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null && !j.Cloud.Trashed).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore, a.Protection)).ToArray();
     }
 
@@ -270,7 +270,7 @@ public sealed partial class HostServer : IAsyncDisposable
                 var job = jobs.SingleOrDefault(j => j.AgentId == known.Id && j.Command.JobId == report.JobId);
                 if (job is null) return Denied("Backup report does not belong to this agent.");
                 var pruned = job.Report.State == "Completed" && !job.Report.ArchivePruned && report.ArchivePruned &&
-                    report with { Sequence = job.Report.Sequence, ArchivePruned = false } == job.Report;
+                    report with { Sequence = job.Report.Sequence, ArchivePruned = false, TemporaryArchiveRemoved = job.Report.TemporaryArchiveRemoved } == job.Report;
                 if (report.Sequence > job.Report.Sequence && (!BackupStates.Terminal(job.Report.State) || pruned))
                 {
                     acknowledged = job with { Report = report, UpdatedUtc = now };
@@ -284,6 +284,7 @@ public sealed partial class HostServer : IAsyncDisposable
                 if (!CloudStates.ValidReport(cloud)) return Denied("Invalid cloud upload report.");
                 var job = jobs.SingleOrDefault(j => j.AgentId == known.Id && j.Command.JobId == cloud.JobId && j.Report.State == "Completed");
                 if (job is null) return Denied("Cloud report does not belong to a completed local backup on this agent.");
+                if (job.Report.Target == BackupTargets.LocalOnly) return Denied("Local-only backups cannot report a Google Drive upload.");
                 cloudAcknowledged = job;
                 var trashed = job.Cloud is { State: "Completed", Trashed: false } && cloud.Trashed &&
                     cloud with { Sequence = job.Cloud.Sequence, Trashed = false } == job.Cloud;

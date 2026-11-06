@@ -17,6 +17,7 @@ internal sealed class FakeGoogle : HttpMessageHandler
     private readonly Dictionary<string, byte[]> _blobs = [];
     public int TrashedFiles { get; private set; }
     public bool TamperRetentionMetadata { get; set; }
+    public bool PretendFilesTrashed { get; set; }
     private readonly Dictionary<string, Session> _sessions = [];
     private int _id;
     private int _session;
@@ -81,16 +82,18 @@ internal sealed class FakeGoogle : HttpMessageHandler
             var id = uri.Segments.Last();
             if (!_files.TryGetValue(id, out var file)) return Json(new { }, 404);
             if (uri.Query == "?alt=media") return new(HttpStatusCode.OK) { Content = new ByteArrayContent(_blobs[id]) };
-            if (request.Method == HttpMethod.Patch)
+            if (request.Method == new HttpMethod("PATCH"))
             {
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(file))!;
                 metadata["trashed"] = true; _files[id] = metadata; TrashedFiles++;
                 return Json(metadata);
             }
-            if (TamperRetentionMetadata)
+            if (TamperRetentionMetadata || PretendFilesTrashed)
             {
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(JsonSerializer.Serialize(file))!;
-                metadata["md5Checksum"] = new string('0', 32); return Json(metadata);
+                if (TamperRetentionMetadata) metadata["md5Checksum"] = new string('0', 32);
+                if (PretendFilesTrashed) metadata["trashed"] = true;
+                return Json(metadata);
             }
             return Json(file);
         }

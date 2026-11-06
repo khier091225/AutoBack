@@ -208,7 +208,7 @@ try
             Check(host.GetJobs().Single(j => j.AgentId == identities[2].AgentId && !BackupStates.Terminal(j.Report.State)).Report.State == "Queued", "offline client keeps its durable scheduled job");
             workers[2] = StartWorker(2);
             await Until(() => host.GetJobs().Count == 6 && host.GetJobs().All(j => j.Report.State == "Completed"));
-            Check(host.GetJobs().Select(j => j.Command.JobId).Distinct().Count() == 6 && stores.All(s => s.Load<JobJournal>("jobs.dat")!.Jobs.Count == 2), "reconnected clients complete exactly one backup per due day");
+            Check(host.GetJobs().Select(j => j.Command.JobId).Distinct().Count() == 6 && stores.All(s => s.Load<JobJournal>(BackupCoordinator.JournalFile)!.Jobs.Count == 2), "reconnected clients complete exactly one backup per due day");
             var output = Path.Combine(repo.FullName, "artifacts", "automation-validation"); Directory.CreateDirectory(output);
             await File.WriteAllTextAsync(Path.Combine(output, "multi-client-result.json"), System.Text.Json.JsonSerializer.Serialize(new
             { verifiedAtUtc = DateTimeOffset.UtcNow, clients = 3, completedBackups = 6, encryptedClient = true, restoreVerifiedClients = 3, offlineQueueAndReconnect = true, physicalPCs = 1, serviceInstallationTested = false }, Protocol.Json));
@@ -239,7 +239,7 @@ try
         Check((await Cli(["protection-status", "--data-dir", directory])).Output.Contains("AES-256-GCM"), "CLI reports real protection state");
         var faultedStore = Store("faulted-worker");
         var credential = new AgentCredentials("127.0.0.1", 47832, new string('0', 64), Guid.NewGuid(), Protocol.NewSecret(), "Fault-Test");
-        faultedStore.Save("agent.dat", credential); faultedStore.Save("jobs.dat", new JobJournal(null!));
+        faultedStore.Save("agent.dat", credential); faultedStore.Save(BackupCoordinator.JournalFile, new JobJournal(null!));
         var failure = await Cli(["run", "--data-dir", Path.Combine(root, "faulted-worker")]);
         Check(failure.Exit != 0 && !failure.Output.Contains(credential.Secret), "fatal console worker failure returns nonzero without printing credentials");
     });

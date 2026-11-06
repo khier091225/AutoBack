@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net48</TargetFramework><PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><UseWindowsForms>true</UseWindowsForms>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects><GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/AutoBack.Agent.Legacy/AutoBack.Agent.Legacy.csproj" />
+    <Reference Include="System.Net.Http" /><Reference Include="System.IO.Compression" />
+    <Compile Include="../../src/AutoBack.Agent.Legacy/FrameworkUsings.cs" Link="FrameworkUsings.cs" />
+    <Compile Include="../AutoBack.Drive.Tests/FakeGoogle.cs" Link="FakeGoogle.cs" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="PolySharp" Version="1.15.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

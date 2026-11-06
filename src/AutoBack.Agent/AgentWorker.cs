@@ -24,9 +24,11 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
 
     private async Task RunWorkerAsync(CancellationToken stoppingToken)
     {
-        await using var backups = new BackupCoordinator(store, credentials.AgentId);
-        RestoreHistory.RecoverInterrupted(store);
         using var driveHttp = DriveHttp.CreateClient();
+        var authorization = new GoogleAuthorization(store, driveHttp);
+        var tokens = new GoogleTokenProvider(store, driveHttp);
+        await using var backups = new BackupCoordinator(store, credentials.AgentId, () => authorization.Status().State == "Connected" ? tokens.Account?.Key : null);
+        RestoreHistory.RecoverInterrupted(store);
         await using var uploads = new CloudUploadCoordinator(store, driveHttp, credentials.AgentId, credentials.Name);
         await using var maintenance = new AgentMaintenance(store, credentials.AgentId, backups, uploads, driveHttp);
         var failures = 0;
@@ -39,13 +41,14 @@ internal sealed class AgentWorker(AgentCredentials credentials, AgentClient clie
             try
             {
                 var plan = backups.LoadPlan();
+                uploads.SetEnabled(plan?.Target != BackupTargets.LocalOnly);
                 var configuration = plan is null ? null : plan.Summary with { Encrypted = EncryptionVault.Load(store).Enabled };
                 var response = await client.PollAsync(credentials, configuration, backups.NextReport(), stoppingToken, uploads.Configuration, uploads.NextReport(), RestoreHistory.Latest(store), maintenance.Summary);
                 backups.Acknowledge(response.AcknowledgedJobId, response.AcknowledgedSequence);
                 if (!maintenance.IsBusy) backups.Handle(response.Command);
                 uploads.Acknowledge(response.AcknowledgedCloudJobId, response.AcknowledgedCloudSequence);
                 uploads.SetHostAuthorized(true);
-                if (!maintenance.IsBusy) uploads.Tick(backups.CompletedJobs());
+                if (!maintenance.IsBusy) uploads.Tick(backups.CompletedJobs(), includeLegacy: plan?.Target == BackupTargets.LegacyBoth);
                 maintenance.Tick();
                 if (!wasConnected) logger.LogInformation("Connected to host {Host}:{Port} as {Name}.", credentials.Host, credentials.Port, credentials.Name);
                 failures = 0;

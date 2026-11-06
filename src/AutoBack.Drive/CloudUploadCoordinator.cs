@@ -20,6 +20,7 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
     private CancellationTokenSource? _cancellation;
     private bool _stopping;
     private bool _hostAuthorized;
+    private bool _enabled = true;
 
     public CloudUploadCoordinator(ProtectedStore store, HttpClient http, Guid agentId, string agentName)
     {
@@ -63,15 +64,21 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
         }
     }
 
-    public void Tick(IReadOnlyList<LocalJob> completed)
+    public void SetEnabled(bool enabled)
+    {
+        lock (_gate) { _enabled = enabled; if (!enabled) _cancellation?.Cancel(); }
+    }
+
+    public void Tick(IReadOnlyList<LocalJob> completed, bool includeLegacy = true)
     {
         lock (_gate)
         {
-            if (_stopping || !_hostAuthorized) return;
+            if (_stopping || !_hostAuthorized || !_enabled) return;
             var account = _tokens.Account;
             if (account is null) return;
-            var additions = completed.Where(j => j.Report.ArchivePath is not null && _journal.Uploads.All(u => u.JobId != j.Command.JobId))
-                .Select(j => new SavedUpload(j.Command.JobId, j.Report.ArchivePath!, account.Key, new(),
+            var additions = completed.Where(j => j.Target != BackupTargets.LocalOnly && j.Report.Target != BackupTargets.LocalOnly &&
+                (includeLegacy || j.Target == BackupTargets.GoogleDrive) && j.Report.ArchivePath is not null && _journal.Uploads.All(u => u.JobId != j.Command.JobId))
+                .Select(j => new SavedUpload(j.Command.JobId, j.Report.ArchivePath!, j.CloudAccountKey ?? account.Key, new(),
                     new(j.Command.JobId, 1, "Queued", 0, 0, 0, "Local backup is complete; waiting for direct Google Drive upload."), DateTimeOffset.UtcNow,
                     GrantGeneration: account.Generation)).ToArray();
             if (additions.Length > 0) Save(new([.. _journal.Uploads, .. additions]));

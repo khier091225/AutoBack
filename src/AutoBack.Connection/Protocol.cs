@@ -9,22 +9,28 @@ namespace AutoBack.Connection;
 
 public static partial class Protocol
 {
-    public const int Version = 3;
+    public const int Version = 4;
     public const int DefaultPort = 47831;
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan JobPollInterval = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan InvitationLifetime = TimeSpan.FromMinutes(5);
+    public static long MonotonicMilliseconds => (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1000.0 / System.Diagnostics.Stopwatch.Frequency));
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     public const int MaxFrameLength = 64 * 1024;
 
+#if NETFRAMEWORK
+    private static readonly Regex LegacyNamePattern = new(@"^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$", RegexOptions.None, TimeSpan.FromSeconds(1));
+    private static Regex NamePattern() => LegacyNamePattern;
+#else
     [GeneratedRegex(@"^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,59}$")]
     private static partial Regex NamePattern();
+#endif
 
     public static bool ValidName(string? name) => name is not null && NamePattern().IsMatch(name);
     public static bool ValidSecret(string? secret) => secret?.Length == 64 && secret.All(Uri.IsHexDigit);
-    public static bool ValidHost(string? host) => !string.IsNullOrWhiteSpace(host) && host.Length <= 253 &&
+    public static bool ValidHost(string? host) => !string.IsNullOrWhiteSpace(host) && host!.Length <= 253 &&
         (IPAddress.TryParse(host, out _) || Uri.CheckHostName(host) == UriHostNameType.Dns);
     public static string NewSecret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     public static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -89,12 +95,12 @@ public sealed record AgentSnapshot(Guid Id, string Name, string MachineName, str
     AgentProtectionSummary? Protection = null);
 public sealed record ConnectionActivity(DateTimeOffset TimeUtc, string Title, string Description);
 
-public sealed record BackupConfiguration(string PlanId, string Source, string Destination, bool Encrypted = false, List<string>? Sources = null);
+public sealed record BackupConfiguration(string PlanId, string Source, string Destination, bool Encrypted = false, List<string>? Sources = null, string Target = BackupTargets.LegacyBoth);
 public sealed record BackupCommand(Guid JobId, string PlanId, DateTimeOffset CreatedUtc, bool CancelRequested = false,
     Guid? RetryOf = null, int Attempt = 0, bool? Encrypt = null);
 public sealed record BackupReport(Guid JobId, long Sequence, string State, int Percent, long BytesCopied, long TotalBytes,
     int FilesCopied, int TotalFiles, string Detail, string? ArchivePath = null, bool Retryable = false,
-    bool Encrypted = false, string? ArchiveSha256 = null, bool ArchivePruned = false);
+    bool Encrypted = false, string? ArchiveSha256 = null, bool ArchivePruned = false, string Target = BackupTargets.LegacyBoth, bool TemporaryArchiveRemoved = false);
 public sealed record HostBackupJob(Guid AgentId, string AgentName, BackupCommand Command, BackupReport Report,
     DateTimeOffset UpdatedUtc, bool CancelRequested = false, CloudReport? Cloud = null, DateTimeOffset? CloudUpdatedUtc = null, string Trigger = "Manual");
 public sealed record CloudConfiguration(string State, string Account, string Detail);
@@ -116,7 +122,7 @@ public static class RestoreStates
 
 public static class CloudStates
 {
-    public static bool ValidId(string? id) => id is { Length: > 0 and <= 200 } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+    public static bool ValidId(string? id) => id is { Length: > 0 and <= 200 } && id.All(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_');
     public static bool ValidConfiguration(CloudConfiguration? configuration) => configuration is null ||
         (configuration.State is "Not connected" or "Connected" or "Needs sign-in" && configuration.Account is { Length: <= 254 } &&
             !configuration.Account.Any(char.IsControl) && BackupStates.ValidText(configuration.Detail, 1024));
@@ -135,16 +141,17 @@ public static class BackupStates
     public static bool Running(string state) => state is "Preparing" or "Copying" or "Verifying";
     public static bool Valid(string state) => Running(state) || Terminal(state);
     public static bool ValidConfiguration(BackupConfiguration? plan) => plan is null ||
-        (Protocol.ValidSecret(plan.PlanId) && ValidText(plan.Source, 1024) && ValidText(plan.Destination, 1024) &&
+        (Protocol.ValidSecret(plan.PlanId) && ValidText(plan.Source, 1024) && ValidText(plan.Destination, 1024) && BackupTargets.Valid(plan.Target) &&
             (plan.Sources is null || (plan.Sources.Count is >= 1 and <= 20 && plan.Sources.All(s => ValidText(s, 1024) && Path.IsPathFullyQualified(s)) &&
             plan.Sources.Distinct(StringComparer.OrdinalIgnoreCase).Count() == plan.Sources.Count &&
             plan.Sources.Sum(s => System.Text.Encoding.UTF8.GetByteCount(s)) <= 20_000)));
-    public static bool ValidText(string? text, int max) => !string.IsNullOrWhiteSpace(text) && text.Length <= max && !text.Any(char.IsControl);
+    public static bool ValidText(string? text, int max) => !string.IsNullOrWhiteSpace(text) && text!.Length <= max && !text.Any(char.IsControl);
     public static bool ValidReport(BackupReport report) => report.JobId != Guid.Empty && report.Sequence > 0 &&
         Valid(report.State) && report.Percent is >= 0 and <= 100 && report.BytesCopied >= 0 && report.TotalBytes >= report.BytesCopied &&
         report.FilesCopied >= 0 && report.TotalFiles >= report.FilesCopied && ValidText(report.Detail, 1024) &&
         (report.ArchivePath is null || ValidText(report.ArchivePath, 1024)) &&
         (report.ArchiveSha256 is null || Protocol.ValidSecret(report.ArchiveSha256)) &&
+        BackupTargets.Valid(report.Target) && (!report.TemporaryArchiveRemoved || (report.Target == BackupTargets.GoogleDrive && report.ArchivePruned)) &&
         (!report.ArchivePruned || report.State == "Completed") &&
         (report.State != "Completed" || (report.Percent == 100 && report.BytesCopied == report.TotalBytes &&
             report.FilesCopied == report.TotalFiles && report.ArchivePath is not null));

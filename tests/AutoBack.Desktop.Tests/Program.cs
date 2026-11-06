@@ -163,6 +163,17 @@ internal static class Program
             Check(viewModel.Computers[0].MaintenanceText.Contains("Retention checked"), "dashboard shows authenticated encryption and retention state");
             var expired = new BackupHistoryEntry("PC", "Completed", "now", "", "D:\\old.zip", "Completed", "", "https://drive.google.com/file/d/old/view", LocalPruned: true, CloudTrashed: true);
             Check(!expired.CanRestore && !expired.HasCloudLink && expired.LocalDisplay.Contains("Expired"), "expired backups remain in history without offering unavailable restore sources");
+            var modeSample = new Computer { Id = Guid.NewGuid(), Name = "Mode sample", MachineName = "QA", AgentVersion = "0.8.0" };
+            var modeSnapshot = new AgentSnapshot(modeSample.Id, modeSample.Name, modeSample.MachineName, modeSample.AgentVersion,"127.0.0.1",DateTimeOffset.UtcNow,DateTimeOffset.UtcNow,true,
+                new(new string('A',64),source,"Google Drive",Target:BackupTargets.GoogleDrive));
+            modeSample.Update(modeSnapshot);
+            Check(!modeSample.CanBackup && modeSample.DestinationMode == "Google Drive", "cloud mode needs sign-in before Backup Now is enabled");
+            modeSample.Update(modeSnapshot with { CloudConfiguration = new("Connected","qa@example.invalid","Authorized") });
+            Check(modeSample.CanBackup, "connected cloud mode enables backup without a permanent destination");
+            modeSample.Update(modeSnapshot with { Configuration = modeSnapshot.Configuration! with { Target = BackupTargets.LocalOnly, Destination = "D:\\Backup" } });
+            Check(modeSample.CanBackup && modeSample.CloudStatus == "Local only" && !modeSample.CloudActive, "local-only mode needs no Google account and shows no upload activity");
+            var temporary = new BackupHistoryEntry("Cloud","Completed","now","","", "Completed", "", "https://drive.google.com/file/d/verified/view",true,Target:BackupTargets.GoogleDrive,TemporaryRemoved:true);
+            Check(temporary.CanRestore && temporary.LocalDisplay.Contains("cleaned"), "cloud restore remains available after temporary archive cleanup");
             Capture("settings-preview.png");
             var pairingWindow = new AddComputerWindow(viewModel) { Owner = window, Left = -16000, Top = -16000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
             pairingWindow.Show();

@@ -25,7 +25,13 @@ if ($FoldersOnly -and $LASTEXITCODE -eq 2) {
     exit 0
 }
 if ($LASTEXITCODE -ne 0) { throw 'Client setup was cancelled or failed. Saved pairing/configuration is retained; run setup again.' }
-Write-Output 'Before starting: grant NT AUTHORITY\LocalService Read access to source and Modify access to the backup destination.'
+$destinationMode = & $agent destination-status --machine
+if ($LASTEXITCODE -ne 0) { throw 'Could not read the saved backup destination mode.' }
+if ($destinationMode -eq 'GoogleDrive') {
+    & $agent drive-ensure --machine
+    if ($LASTEXITCODE -ne 0) { throw 'Google Drive sign-in did not complete. Service remains stopped; rerun setup to connect.' }
+    Write-Output 'Before starting: grant NT AUTHORITY\LocalService Read access to every selected source. Temporary storage is managed automatically.'
+} else { Write-Output 'Before starting: grant NT AUTHORITY\LocalService Read access to source and Modify access to the local backup destination.' }
 Write-Output 'Do not grant broader access than those folders. Encryption/retention remain as configured; see docs\AUTOMATION-ROLLOUT.md.'
 $answer = Read-Host 'Are those folder permissions ready? Type START to start the service, or press Enter to leave it stopped'
 if ($answer -ceq 'START') {

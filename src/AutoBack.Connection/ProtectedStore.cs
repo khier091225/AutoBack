@@ -10,6 +10,7 @@ public sealed class ProtectedStore
 {
     private readonly string _directory;
     private readonly DataProtectionScope _scope;
+    public string DirectoryPath => _directory;
 
     public ProtectedStore(string directory, bool machineScope = false)
     {

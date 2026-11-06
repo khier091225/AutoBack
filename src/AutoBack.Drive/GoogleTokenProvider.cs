@@ -42,7 +42,7 @@ public sealed class GoogleTokenProvider(ProtectedStore store, HttpClient http)
             if (string.IsNullOrWhiteSpace(_accessToken)) throw new DriveException(DriveFailure.Authorization, "Google returned no access token. Reconnect the client account.");
             _generation = account.Generation;
             _expires = DateTimeOffset.UtcNow.AddSeconds(Math.Max(0, json.RootElement.GetProperty("expires_in").GetInt32() - 60));
-            return _accessToken;
+            return _accessToken!;
         }
         finally { _gate.Release(); }
     }

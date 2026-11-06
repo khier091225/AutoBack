@@ -21,28 +21,30 @@ internal sealed class AgentMaintenance(ProtectedStore store, Guid agentId, Backu
         if (IsBusy || backups.IsBusy || uploads.IsBusy) return;
         var policy = RetentionPolicy.Load(store);
         var jobs = backups.AllJobs(); var cloud = uploads.AllUploads();
-        var signature = string.Join('|', jobs.Select(j => $"{j.Command.JobId}/{j.Report.State}/{j.Report.ArchivePruned}")) + ";" +
-            string.Join('|', cloud.Select(c => $"{c.JobId}/{c.Report.State}/{c.Report.Trashed}"));
+        var plan = backups.LoadPlan();
+        var signature = plan?.PlanId + ";" + string.Join("|", jobs.Select(j => $"{j.Command.JobId}/{j.Report.State}/{j.Report.ArchivePruned}/{j.Acknowledged}")) + ";" +
+            string.Join("|", cloud.Select(c => $"{c.JobId}/{c.Report.State}/{c.Report.Trashed}/{c.Acknowledged}"));
         if (_lastSignature == signature && DateTimeOffset.UtcNow < _next) return;
         _lastSignature = signature; _next = DateTimeOffset.UtcNow.AddHours(1);
         _task = Task.Run(async () =>
         {
             var vault = EncryptionVault.Load(store);
-            var localCount = 0; var cloudCount = 0;
+            var localCount = 0; var cloudCount = 0; var temporaryCount = 0;
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 timeout.CancelAfter(TimeSpan.FromMinutes(15));
-                var protectedJobs = jobs.Where(j => cloud.Any(c => c.JobId == j.Command.JobId && c.Report.State != "Completed") ||
-                        (uploads.Configuration.State != "Not connected" && !cloud.Any(c => c.JobId == j.Command.JobId && c.Report.State == "Completed")))
+                if (plan?.Target != BackupTargets.LocalOnly)
+                    temporaryCount = await new CloudCacheCleanup(store, http, agentId).RunAsync(jobs, cloud, backups.MarkTemporaryRemoved, timeout.Token);
+                var protectedJobs = jobs.Where(j => j.Target != BackupTargets.LocalOnly && (cloud.Any(c => c.JobId == j.Command.JobId && c.Report.State != "Completed") ||
+                        (uploads.Configuration.State != "Not connected" && !cloud.Any(c => c.JobId == j.Command.JobId && c.Report.State == "Completed"))))
                     .Select(j => j.Command.JobId).ToHashSet();
-                var plan = backups.LoadPlan();
-                if (plan is not null && policy.KeepLocal > 0)
+                if (plan is not null && plan.Target != BackupTargets.GoogleDrive && policy.KeepLocal > 0)
                     localCount = await LocalRetention.PruneAsync(plan, agentId, jobs, policy.KeepLocal, protectedJobs, vault.Resolve, backups.MarkPruned, timeout.Token);
-                if (policy.KeepCloud > 0)
+                if (policy.KeepCloud > 0 && plan?.Target != BackupTargets.LocalOnly)
                     cloudCount = await new DriveRetention(store, http, agentId).PruneAsync(cloud, policy.KeepCloud, uploads.MarkTrashed, timeout.Token);
                 _summary = new(vault.Enabled, policy.KeepLocal, policy.KeepCloud, "Ready",
-                    $"Retention checked: {localCount} local archive(s) pruned; {cloudCount} cloud archive(s) trashed.", DateTimeOffset.UtcNow);
+                    $"Cleanup: {temporaryCount} verified temporary archive(s) removed; {localCount} local version(s) pruned; {cloudCount} cloud version(s) trashed.", DateTimeOffset.UtcNow);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Security.Cryptography.CryptographicException or
                 DriveException or HttpRequestException or OperationCanceledException or ArgumentException or InvalidOperationException)

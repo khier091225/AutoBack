@@ -106,8 +106,8 @@ try
         Check(Directory.EnumerateFiles(plan.Destination, "*.zip", SearchOption.AllDirectories).Count() == 1, "replayed command never runs twice");
         var interrupted = Command(plan);
         var cancelled = Command(plan) with { CancelRequested = true };
-        var journal = store.Load<JobJournal>("jobs.dat")!;
-        store.Save("jobs.dat", new JobJournal([.. journal.Jobs.Select(j => j with { Acknowledged = true }),
+        var journal = store.Load<JobJournal>(BackupCoordinator.JournalFile)!;
+        store.Save(BackupCoordinator.JournalFile, new JobJournal([.. journal.Jobs.Select(j => j with { Acknowledged = true }),
             new(interrupted, new(interrupted.JobId, 1, "Copying", 12, 0, 10, 0, 1, "In progress"))]));
         await using var recovered = new BackupCoordinator(store, agentId);
         Check(recovered.NextReport()?.State == "Failed" && recovered.NextReport()!.Detail.Contains("interrupted"), "restart marks unconfirmed work interrupted instead of complete");

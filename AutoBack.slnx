@@ -3,6 +3,7 @@
   <Folder Name="/src/">
     <Project Path="src/AutoBack.Connection/AutoBack.Connection.csproj" />
     <Project Path="src/AutoBack.Agent/AutoBack.Agent.csproj" />
+    <Project Path="src/AutoBack.Agent.Legacy/AutoBack.Agent.Legacy.csproj" />
     <Project Path="src/AutoBack.Backup/AutoBack.Backup.csproj" />
     <Project Path="src/AutoBack.Drive/AutoBack.Drive.csproj" />
   </Folder>
@@ -14,5 +15,8 @@
     <Project Path="tests/AutoBack.Restore.Tests/AutoBack.Restore.Tests.csproj" />
     <Project Path="tests/AutoBack.Automation.Tests/AutoBack.Automation.Tests.csproj" />
     <Project Path="tests/AutoBack.Folders.Tests/AutoBack.Folders.Tests.csproj" />
+    <Project Path="tests/AutoBack.Destinations.Tests/AutoBack.Destinations.Tests.csproj" />
+    <Project Path="tests/AutoBack.Legacy.UnitTests/AutoBack.Legacy.UnitTests.csproj" />
+    <Project Path="tests/AutoBack.Legacy.IntegrationTests/AutoBack.Legacy.IntegrationTests.csproj" />
   </Folder>
 </Solution>

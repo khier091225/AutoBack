@@ -2,6 +2,14 @@ namespace AutoBack.Agent;
 
 internal static class FolderSelection
 {
+    internal static System.Windows.Forms.FolderBrowserDialog CreateFolderPicker(string description)
+    {
+        var picker = new System.Windows.Forms.FolderBrowserDialog { Description = description };
+#if !NETFRAMEWORK
+        picker.UseDescriptionForTitle = true;
+#endif
+        return picker;
+    }
     public static string? ChooseInvitation() => SelectOnSta(() =>
     {
         using var picker = new System.Windows.Forms.OpenFileDialog { Title = "Choose a fresh pairing invitation from the host", Filter = "AutoBack invitation|*.autoback-invite", CheckFileExists = true };
@@ -17,11 +25,7 @@ internal static class FolderSelection
 
     public static string? ChooseRestoreDestination(bool verify) => SelectOnSta(() =>
     {
-        using var picker = new System.Windows.Forms.FolderBrowserDialog
-        {
-            Description = verify ? "AutoBack: choose the restored folder containing restore-report.json" : "AutoBack: choose a parent folder for a NEW recovery folder",
-            UseDescriptionForTitle = true
-        };
+        using var picker = CreateFolderPicker(verify ? "AutoBack: choose the restored folder containing restore-report.json" : "AutoBack: choose a parent folder for a NEW recovery folder");
         if (picker.ShowDialog() != System.Windows.Forms.DialogResult.OK) return null;
         return verify ? picker.SelectedPath : Path.Combine(picker.SelectedPath, $"AutoBack-Restore-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}");
     });
@@ -58,7 +62,7 @@ internal static class FolderSelection
         return result;
     }
 
-    public static AutoBack.Backup.BackupPlan? ChoosePlan(AutoBack.Backup.BackupPlan? existing)
+    public static AutoBack.Backup.BackupPlan? ChoosePlan(AutoBack.Backup.BackupPlan? existing, string dataDirectory)
     {
         AutoBack.Backup.BackupPlan? result = null;
         Exception? error = null;
@@ -67,7 +71,7 @@ internal static class FolderSelection
             try
             {
                 System.Windows.Forms.Application.EnableVisualStyles();
-                using var form = new BackupFoldersForm(existing);
+                using var form = new BackupFoldersForm(existing, dataDirectory);
                 if (form.ShowDialog() == System.Windows.Forms.DialogResult.OK) result = form.SelectedPlan;
             }
             catch (Exception ex) { error = ex; }

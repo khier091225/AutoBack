@@ -55,12 +55,12 @@ public sealed class DriveDownloader(ProtectedStore store, HttpClient http)
             long total = 0;
             using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
-            await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
+            using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
             {
                 created = true;
-                await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
                 var buffer = new byte[128 * 1024];
-                var lastProgress = Environment.TickCount64;
+                var lastProgress = Protocol.MonotonicMilliseconds;
                 int read;
                 while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
                 {
@@ -69,8 +69,8 @@ public sealed class DriveDownloader(ProtectedStore store, HttpClient http)
                     sha.AppendData(buffer, 0, read);
                     md5.AppendData(buffer, 0, read);
                     total += read;
-                    if (Environment.TickCount64 - lastProgress >= 200)
-                    { progress?.Invoke(new(total, remote.Size, "Downloading and hashing the cloud archive.")); lastProgress = Environment.TickCount64; }
+                    if (Protocol.MonotonicMilliseconds - lastProgress >= 200)
+                    { progress?.Invoke(new(total, remote.Size, "Downloading and hashing the cloud archive.")); lastProgress = Protocol.MonotonicMilliseconds; }
                 }
                 if (total != remote.Size) throw new InvalidDataException("The cloud download is truncated.");
                 await output.FlushAsync(cancellationToken);

@@ -24,7 +24,7 @@ public sealed class LocalBackupEngine
             throw new InvalidDataException("The backup request does not match the client's configured folders.");
         plan.Validate();
         report(new("Preparing", 0, 0, 0, 0, 0, "Scanning source files."));
-        var roots = plan.SelectedSources is null ? null : plan.Sources.Select((source, i) => new ManifestRoot(source, RootPrefix(source, i))).ToList();
+        var roots = plan.Sources.Count == 1 ? null : plan.Sources.Select((source, i) => new ManifestRoot(source, RootPrefix(source, i))).ToList();
         var inventory = ScanPlan(plan, roots, cancellationToken);
         var totalBytes = inventory.Files.Aggregate(0L, (sum, file) => checked(sum + file.Length));
         report(new("Copying", 1, 0, totalBytes, 0, inventory.Files.Count, "Copying the scanned source files."));
@@ -39,11 +39,11 @@ public sealed class LocalBackupEngine
         long copied = 0;
         var filesCopied = 0;
         var manifest = new BackupManifest(roots is null ? 1 : 2, command.JobId, agentId, command.CreatedUtc, plan.Sources[0], inventory.Directories, [], roots);
-        var lastProgress = Environment.TickCount64;
+        var lastProgress = Protocol.MonotonicMilliseconds;
         var createdPartial = false;
         try
         {
-            await using (var output = new FileStream(partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
+            using (var output = new FileStream(partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
             {
                 createdPartial = true;
                 using var encrypted = encryptionKey is null ? null : new EncryptedWriteStream(output, encryptionKey);
@@ -55,13 +55,13 @@ public sealed class LocalBackupEngine
                         cancellationToken.ThrowIfCancellationRequested();
                         BackupPlan.CheckNoReparse(Path.GetDirectoryName(file.FullName)!);
                         if ((File.GetAttributes(file.FullName) & FileAttributes.ReparsePoint) != 0) throw new IOException("A source file became a symbolic link: " + file.RelativeName);
-                        await using var input = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                        using var input = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
                         if (input.Length != file.Length || File.GetLastWriteTimeUtc(file.FullName) != file.ModifiedUtc)
                             throw new IOException("A source file changed during backup: " + file.RelativeName);
                         var entry = archive.CreateEntry("files/" + file.RelativeName, CompressionLevel.Fastest);
                         if (file.ModifiedUtc.Year is >= 1980 and <= 2107) entry.LastWriteTime = new DateTimeOffset(file.ModifiedUtc, TimeSpan.Zero);
                         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                        await using (var target = entry.Open())
+                        using (var target = entry.Open())
                         {
                             var buffer = new byte[128 * 1024];
                             int read;
@@ -70,10 +70,10 @@ public sealed class LocalBackupEngine
                                 await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                                 hash.AppendData(buffer, 0, read);
                                 copied += read;
-                                if (Environment.TickCount64 - lastProgress >= 250)
+                                if (Protocol.MonotonicMilliseconds - lastProgress >= 250)
                                 {
                                     report(new("Copying", Percent(copied, totalBytes, 1, 84), copied, totalBytes, filesCopied, inventory.Files.Count, "Copying " + Short(file.RelativeName)));
-                                    lastProgress = Environment.TickCount64;
+                                    lastProgress = Protocol.MonotonicMilliseconds;
                                 }
                             }
                         }
@@ -86,7 +86,7 @@ public sealed class LocalBackupEngine
                     var finalInventory = ScanPlan(plan, roots, cancellationToken);
                     if (!inventory.Directories.SequenceEqual(finalInventory.Directories) || !inventory.Files.SequenceEqual(finalInventory.Files))
                         throw new IOException("The source folder changed during backup. Close files being edited and start a new backup.");
-                    await using var manifestStream = archive.CreateEntry("manifest.json", CompressionLevel.Fastest).Open();
+                    using var manifestStream = archive.CreateEntry("manifest.json", CompressionLevel.Fastest).Open();
                     await JsonSerializer.SerializeAsync(manifestStream, manifest, Protocol.Json, cancellationToken);
                 }
                 encrypted?.Finish();
@@ -98,7 +98,7 @@ public sealed class LocalBackupEngine
             cancellationToken.ThrowIfCancellationRequested();
             BackupPlan.CheckNoReparse(versionDirectory);
             string sha;
-            await using (var saved = File.OpenRead(partialPath)) sha = Convert.ToHexString(await SHA256.HashDataAsync(saved, cancellationToken));
+            using (var saved = File.OpenRead(partialPath)) sha = Convert.ToHexString(await SHA256.HashDataAsync(saved, cancellationToken));
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(partialPath, archivePath); // Publish only a closed, flushed, and verified archive. Never overwrite another version.
             return new(archivePath, copied, filesCopied, encryptionKey is not null, sha);
@@ -133,7 +133,7 @@ public sealed class LocalBackupEngine
             cancellationToken.ThrowIfCancellationRequested();
             var entry = archive.GetEntry("files/" + file.Path) ?? throw new InvalidDataException("A file is missing from the saved archive.");
             if (entry.Length != file.Length) throw new InvalidDataException("A saved file has the wrong size: " + file.Path);
-            await using var stream = entry.Open();
+            using var stream = entry.Open();
             var hash = await SHA256.HashDataAsync(stream, cancellationToken);
             if (!CryptographicOperations.FixedTimeEquals(hash, Convert.FromHexString(file.Sha256)))
                 throw new InvalidDataException("Checksum verification failed: " + file.Path);
@@ -150,7 +150,11 @@ public sealed class LocalBackupEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
             BackupPlan.CheckNoReparse(directory.FullName);
+#if NETFRAMEWORK
+            foreach (var entry in directory.EnumerateFileSystemInfos("*", SearchOption.TopDirectoryOnly))
+#else
             foreach (var entry in directory.EnumerateFileSystemInfos("*", new EnumerationOptions { IgnoreInaccessible = false, AttributesToSkip = 0 }))
+#endif
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("Symbolic links and junctions are not supported: " + entry.FullName);
@@ -166,7 +170,7 @@ public sealed class LocalBackupEngine
 
     private static Inventory ScanPlan(BackupPlan plan, List<ManifestRoot>? roots, CancellationToken token)
     {
-        if (roots is null) return Scan(plan.Source, token);
+        if (roots is null) return Scan(plan.Sources[0], token);
         var directories = new List<string>(); var files = new List<SourceFile>();
         foreach (var root in roots)
         {

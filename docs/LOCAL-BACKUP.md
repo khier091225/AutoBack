@@ -1,10 +1,10 @@
 # Actual local backup
 
-The host requests a job; the authenticated client creates and verifies a new ZIP in its own configured local destination. Archives do not pass through the host. Direct Google Drive upload is available after [client Google setup](GOOGLE-DRIVE-SETUP.md); the local result remains independent of the cloud result.
+This guide covers **Local only**: the host requests a job and the client saves/verifies a permanent ZIP/encrypted archive in its selected local folder. These jobs are not uploaded automatically even when Google is connected. The default new setup is **Google Drive**, which uses managed temporary storage and cleanup instead; see [destination modes](DESTINATION-MODES.md). Archives do not pass through the host.
 
 ## 1. Update the host and agent
 
-Use the version 0.7 host **and** agent (protocol 3). Close the previous host window and stop the previous agent before replacing its executable folder. Saved identities and pairing credentials are retained. Version 0.7 reports the complete per-client source list and supports multi-folder archive format 2. See [folder selection](SELECT-FOLDERS.md) and [Automation and rollout](AUTOMATION-ROLLOUT.md).
+Use the version 0.8 host **and** agent (protocol 4). Stop previous binaries before replacement. Pairings/certificates are retained; recreate old invitation files when pairing a new client. Archive formats 1/2 and existing files remain supported. See [folder selection](SELECT-FOLDERS.md) and [Automation and rollout](AUTOMATION-ROLLOUT.md).
 
 Publish from the repository if needed:
 
@@ -23,10 +23,10 @@ For console mode, open PowerShell in the agent directory:
 .\AutoBack.Agent.exe configure
 ```
 
-A folder manager opens with existing selections prefilled. Use Add folder / Remove selected, choose a separate destination and Save folders. Cancel preserves the previous configuration. Repeat `--source` for multiple folders with the CLI, or use a single source as before:
+A folder manager opens with selections prefilled. Choose **Local only**, Add/Remove sources, select a separate local destination and Save. Cancel preserves the previous configuration. CLI example:
 
 ```powershell
-.\AutoBack.Agent.exe configure --source "D:\OfficeFiles" --destination "E:\OfficeBackups"
+.\AutoBack.Agent.exe configure --mode local --source "D:\OfficeFiles" --destination "E:\OfficeBackups"
 .\AutoBack.Agent.exe run
 ```
 
@@ -34,7 +34,7 @@ Use the same Windows account and `--data-dir` as pairing. Each client may select
 
 The destination cannot be inside the source, equal to it, or contain it. Network shares/mapped network drives and paths through junctions/symbolic links are unsupported. Backups fail when a junction or symbolic link is encountered inside the source, rather than silently excluding it.
 
-The configuration is saved separately from credentials and can be updated while the agent is running. The next poll advertises it to the host. A queued job is tied to the exact configuration that was advertised when it was queued: if folders change before the job starts, that job fails and a new job must be requested. A running job keeps its captured configuration.
+Configuration is saved separately from credentials. Stop the agent/service to edit it, then restart; the next poll reports the selection. Queued jobs are tied to the prior plan identity and fail safely if the selection/mode changed before execution. New local-only jobs cannot be rediscovered for upload after a later mode change.
 
 ## Windows Service mode
 

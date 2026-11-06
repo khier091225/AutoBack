@@ -15,13 +15,19 @@ internal static class Program
     {
         try
         {
+#if NETFRAMEWORK
+            if (args.Length > 0 && args[0] == "installed-setup") return await AutoBack.Legacy.InstalledSetup.RunAsync(args.Skip(1).ToArray());
+#endif
             if (args.Length == 0 || args[0] is "help" or "--help")
             {
+#if NETFRAMEWORK
+                Console.WriteLine("Windows 7 SP1 x86 legacy client (.NET Framework 4.8). Pilot testing on Windows 7 required.");
+#endif
                 Console.WriteLine("""
-                    AutoBack Agent 0.7
+                    AutoBack Agent 0.8
                     setup                             Interactive pairing, folders and optional Google sign-in
                     pair --invite <file> [--name <name>] [--replace]
-                    configure [--source <folder> [--source <another folder> ...] --destination <folder>]
+                    configure [--mode google-drive|local] [--source <folder> ...] [--destination <local folder>]
                     drive-connect [--client-secrets <Desktop OAuth JSON>]
                     drive-status | drive-disconnect | drive-retry
                     encryption-enable --recovery-file <NEW .abkey file>
@@ -51,6 +57,8 @@ internal static class Program
                 Environment.GetFolderPath(machine ? Environment.SpecialFolder.CommonApplicationData : Environment.SpecialFolder.LocalApplicationData),
                 "AutoBack", "Agent");
             var store = new ProtectedStore(directory, machine);
+            if (args[0] == "destination-status")
+            { Console.WriteLine(store.Load<BackupPlan>("backup-plan.dat")?.Target ?? "NotConfigured"); return 0; }
             if (args[0] == "setup") return await SetupCommands.ExecuteAsync(options, store);
             if (args[0] is "encryption-enable" or "encryption-disable" or "recovery-export" or "recovery-import" or "retention-configure" or "protection-status")
             {
@@ -64,10 +72,12 @@ internal static class Program
                 using var restoreLock = new FileStream(Path.Combine(Path.GetFullPath(directory), ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
                 return await RestoreCommands.ExecuteAsync(args[0], options, store);
             }
-            if (args[0] is "drive-connect" or "drive-status" or "drive-disconnect" or "drive-retry")
+            if (args[0] is "drive-connect" or "drive-ensure" or "drive-status" or "drive-disconnect" or "drive-retry")
             {
                 using var http = DriveHttp.CreateClient();
                 var authorization = new GoogleAuthorization(store, http);
+                if (args[0] == "drive-ensure" && authorization.Status().State == "Connected")
+                { Console.WriteLine("Google Drive is already connected on this client."); return 0; }
                 if (args[0] == "drive-status")
                 {
                     var cloud = authorization.Status();
@@ -96,23 +106,28 @@ internal static class Program
             }
             if (args[0] == "configure")
             {
+                using var configurationLock = new FileStream(Path.Combine(store.DirectoryPath, ".agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
                 var destination = options.GetValueOrDefault("--destination");
                 BackupPlan plan;
-                if (sourcePaths.Count == 0 && destination is null)
+                if (sourcePaths.Count == 0 && destination is null && !options.ContainsKey("--mode"))
                 {
-                    var selection = FolderSelection.ChoosePlan(store.Load<BackupPlan>("backup-plan.dat"));
+                    var selection = FolderSelection.ChoosePlan(store.Load<BackupPlan>("backup-plan.dat"), store.DirectoryPath);
                     if (selection is null) { Console.WriteLine("Folder selection cancelled. Existing configuration is unchanged."); return 2; }
                     plan = selection;
                 }
                 else
                 {
-                    if (sourcePaths.Count == 0 || destination is null) throw new ArgumentException("Provide one or more --source paths and --destination, or omit them to open the folder manager.");
-                    plan = BackupPlan.CreateMany(sourcePaths, destination);
+                    if (sourcePaths.Count == 0) throw new ArgumentException("Choose at least one --source, or omit options to open the folder manager.");
+                    var mode = options.GetValueOrDefault("--mode") ?? (destination is null ? "google-drive" : "local");
+                    var target = mode switch { "google-drive" => BackupTargets.GoogleDrive, "local" => BackupTargets.LocalOnly, _ => throw new ArgumentException("Use --mode google-drive or --mode local.") };
+                    if (target == BackupTargets.GoogleDrive && destination is not null) throw new ArgumentException("Google Drive manages its temporary archive automatically. Omit --destination, or use --mode local.");
+                    plan = BackupPlan.CreateForTarget(sourcePaths, target, destination, store.DirectoryPath);
                 }
                 Directory.CreateDirectory(plan.Destination);
                 BackupPlan.CheckNoReparse(plan.Destination);
                 store.Save("backup-plan.dat", plan);
-                Console.WriteLine($"Local backup configured.\nSource folders ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nDestination: {plan.Destination}\nStart/keep the agent running; the host will receive this configuration on its next heartbeat.\nEvery selected folder and its subfolders are included. The agent account needs access to all selected folders.");
+                Console.WriteLine($"Backup configured: {BackupTargets.Label(plan.Target)}.\nSource folders ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nDestination: {plan.Summary.Destination}\nStart the agent to report this selection.\n" +
+                    (plan.Target == BackupTargets.GoogleDrive ? "Connect Google Drive first with drive-connect. Temporary archives are kept for retries and cleared after confirmed upload." : "Backups stay in the selected local folder. Google Drive uploads are paused."));
                 return 0;
             }
             if (args[0] == "status")
@@ -122,7 +137,7 @@ internal static class Program
                 saved.Validate();
                 Console.WriteLine($"Paired computer: {saved.Name}\nAgent ID: {saved.AgentId}\nHost: {saved.Host}:{saved.Port}\nHost certificate SHA-256: {saved.CertificateSha256}\nCredential store: {Path.GetFullPath(directory)}\nStatus shows saved pairing only; the host dashboard shows live connectivity.");
                 var plan = store.Load<BackupPlan>("backup-plan.dat");
-                Console.WriteLine(plan is null ? "Backup folders: not configured." : $"Backup sources ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nLocal destination: {plan.Destination}");
+                Console.WriteLine(plan is null ? "Backup folders: not configured." : $"Mode: {BackupTargets.Label(plan.Target)}\nBackup sources ({plan.Sources.Count}):\n{string.Join("\n", plan.Sources.Select(s => "  " + s))}\nDestination: {plan.Summary.Destination}");
                 return 0;
             }
             if (args[0] is not ("pair" or "run")) throw new ArgumentException("Unknown command. Use --help.");
@@ -192,7 +207,7 @@ internal static class Program
         {
             var key = args[i];
             if (key is "--machine" or "--replace" or "--password-stdin") options.Add(key, null);
-            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file" or "--recovery-file" or "--keep-local" or "--keep-cloud")
+            else if (key is "--data-dir" or "--invite" or "--name" or "--source" or "--destination" or "--client-secrets" or "--archive" or "--drive-file" or "--recovery-file" or "--keep-local" or "--keep-cloud" or "--mode")
             {
                 if (++i == args.Length || args[i].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException($"Missing value for {key}.");
                 if (key == "--source") { sourcePaths.Add(args[i]); options[key] = args[i]; }

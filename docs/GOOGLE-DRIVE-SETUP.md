@@ -1,6 +1,6 @@
-# Google Drive setup — AutoBack 0.6
+# Google Drive setup — AutoBack 0.8
 
-Ang client PC mismo ang mag-a-upload sa Google Drive matapos gumawa ng successful local backup. Magkahiwalay ang local at cloud result sa host. Hindi ipinapadala sa host ang Google tokens o ang backup ZIP.
+Google Drive ang default sa bagong setup. Client mismo ang gumagawa/verifies ng temporary archive at nag-a-upload; automatic itong nililinis pagkatapos ng confirmed upload at host acknowledgment. Walang permanent local destination na pipiliin. Local only ang hiwalay na option para sa permanent local versions at walang automatic upload. Tingnan ang [destination modes](DESTINATION-MODES.md). Tokens at archives ay hindi ipinapadala sa host.
 
 **Current validation:** pumasa ang automated tests at isang live Google Drive test noong November 5, 2026. Gumawa ang paired client ng ZIP mula sa dalawang synthetic sample files, direktang nag-upload sa Google Drive, at nagtugma ang remote file size at checksum sa local archive. Parehong Completed ang local at cloud result. Same-PC console mode ang live test; kailangan pa ang Windows Service at cross-PC office validation.
 
@@ -22,7 +22,7 @@ Gamitin ang parehong Desktop client JSON para sa office client PCs na gumagamit 
 
 ## B. Update both host and client
 
-Gamitin ang version **0.6 / protocol 3** sa host at agent para sa uploads, encrypted recovery at protection reporting. Saved pairings at existing local backups ay retained kapag parehong data store ang ginamit.
+Gamitin ang version **0.8 / protocol 4** sa host at agent. Saved pairings, backups at recovery keys are retained; old invitation files need regeneration for new pairing.
 
 Sa development PC, kung kailangan mag-publish:
 
@@ -54,7 +54,7 @@ Puwede ring `drive-connect` lang: may JSON file picker. Bubukas ang system brows
 
 Kung gumamit ng `--data-dir` sa pairing, gamitin ang parehong option sa lahat ng commands. Google credentials ay naka-DPAPI encryption sa client data store; short-lived access tokens stay in memory.
 
-**Existing backups:** pagka-start ng connected agent, pati previously completed local backups na wala pang upload record ay automatically ma-queue. Pending uploads are bound to the Google account/client ID where they were first queued. Hindi ililipat sa ibang Google account ang dating pending uploads kapag nagpalit ng sign-in; kailangan ang original account para ma-resume iyon. New backups may use the newly connected account.
+**Existing backups:** new Local only jobs are never discovered for automatic upload. New Google-mode setup does not retroactively queue older local/legacy archives. Existing legacy plans retain their former behavior until deliberately resaved; already queued uploads preserve their original Google account binding. Local only pauses that pending cloud work. Reconnect the original account to resume eligible uploads in cloud-capable mode.
 
 ## D. Connect Google for Windows Service mode
 
@@ -73,9 +73,9 @@ Sign-in happens in your interactive browser; the background LocalService worker 
 
 1. Gumamit muna ng maliit na test source folder, at panatilihing bukas ang host at running ang client.
 2. Sa host, click **Backup Now**.
-3. Hintayin ang **Local complete**. Dapat may actual ZIP sa local destination.
+3. Hintayin ang **Prepared for upload**, kasunod ang cloud upload. Google mode uses automatic private staging; no permanent local backup folder is required.
 4. Sa **Cloud Upload**, makikita ang Queued → Uploading → Cloud complete. Google Drive must confirm the uploaded size/checksum before completion is reported.
-5. Sa **Activity**, may sariling local result, cloud result, at **Open in Google Drive** button para sa confirmed upload.
+5. Sa **Activity**, may preparation result, cloud result, automatic temporary-cleanup status at **Open in Google Drive** para sa confirmed upload. Restore from Drive remains available after cache cleanup.
 6. Sa signed-in account's My Drive, hanapin:
 
 ```text

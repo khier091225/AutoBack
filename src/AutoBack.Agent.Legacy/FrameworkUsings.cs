@@ -1,0 +1,15 @@
+global using System.Net.Http;
+global using AutoBack.Legacy;
+global using Convert = AutoBack.Legacy.LegacyConvert;
+global using Path = AutoBack.Legacy.LegacyPath;
+global using File = AutoBack.Legacy.LegacyFile;
+global using RandomNumberGenerator = AutoBack.Legacy.LegacyRandomNumberGenerator;
+global using SHA256 = AutoBack.Legacy.LegacySha256;
+global using MD5 = AutoBack.Legacy.LegacyMd5;
+global using CryptographicOperations = AutoBack.Legacy.LegacyCryptographicOperations;
+global using AesGcm = AutoBack.Legacy.LegacyAesGcm;
+global using HKDF = AutoBack.Legacy.LegacyHkdf;
+global using Rfc2898DeriveBytes = AutoBack.Legacy.LegacyPbkdf2;
+global using AuthenticationTagMismatchException = AutoBack.Legacy.LegacyAuthenticationTagMismatchException;
+global using Random = AutoBack.Legacy.LegacyRandom;
+global using TcpListener = AutoBack.Legacy.LegacyTcpListener;

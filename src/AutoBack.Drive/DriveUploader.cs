@@ -18,7 +18,7 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         Action<UploadCheckpoint> checkpoint, Action<UploadProgress> progress, CancellationToken cancellationToken)
     {
         if (!File.Exists(archivePath)) throw new DriveException(DriveFailure.Permanent, "The local archive is missing. Restore the local file or create a new backup.");
-        await using var input = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024,
+        using var input = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         var encrypted = Path.GetExtension(archivePath).Equals(".abk", StringComparison.OrdinalIgnoreCase);
         var mime = encrypted ? "application/octet-stream" : "application/zip";
@@ -27,7 +27,7 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         using (var archive = new ZipArchive(archiveInput, ZipArchiveMode.Read))
         {
             var entry = archive.GetEntry("manifest.json") ?? throw new InvalidDataException("The local ZIP has no AutoBack manifest.");
-            await using var manifestStream = entry.Open();
+            using var manifestStream = entry.Open();
             var manifest = await JsonSerializer.DeserializeAsync<BackupManifest>(manifestStream, Protocol.Json, cancellationToken)
                 ?? throw new InvalidDataException("The local backup manifest is empty.");
             if (manifest.JobId != jobId || manifest.AgentId != agentId) throw new InvalidDataException("The local archive belongs to a different backup job.");

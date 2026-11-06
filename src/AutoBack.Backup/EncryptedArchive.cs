@@ -73,7 +73,11 @@ public sealed class EncryptedWriteStream : Stream
         try { output.Write(_header); } catch { _aes.Dispose(); throw; }
     }
     public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+#if NETFRAMEWORK
+    public void Write(ReadOnlySpan<byte> buffer)
+#else
     public override void Write(ReadOnlySpan<byte> buffer)
+#endif
     {
         if (_finished) throw new InvalidOperationException("Encrypted archive is already complete.");
         while (!buffer.IsEmpty)
@@ -84,8 +88,12 @@ public sealed class EncryptedWriteStream : Stream
             if (_buffered == _plain.Length) WriteChunk();
         }
     }
+#if NETFRAMEWORK
+    public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
+#else
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
-    { token.ThrowIfCancellationRequested(); Write(buffer.Span); return ValueTask.CompletedTask; }
+#endif
+    { token.ThrowIfCancellationRequested(); Write(buffer.Span); return default; }
     private void WriteChunk()
     {
         var encrypted = new byte[_buffered]; Span<byte> tag = stackalloc byte[16];
@@ -127,7 +135,7 @@ internal sealed class EncryptedReadStream : Stream
         input.ReadExactly(_header);
         if (BinaryPrimitives.ReadInt32LittleEndian(_header.AsSpan(8)) != 1 || BinaryPrimitives.ReadInt32LittleEndian(_header.AsSpan(12)) != ArchiveFile.ChunkSize)
             throw new InvalidDataException("Unsupported encrypted archive format.");
-        var key = keys(new Guid(_header.AsSpan(16, 16)));
+        var key = keys(new Guid(_header.AsSpan(16, 16).ToArray()));
         var derived = ArchiveFile.Derive(key, _header);
         try { _aes = new AesGcm(derived, 16); } finally { CryptographicOperations.ZeroMemory(derived); }
         try
@@ -143,7 +151,11 @@ internal sealed class EncryptedReadStream : Stream
         catch { _aes.Dispose(); throw; }
     }
     public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+#if NETFRAMEWORK
+    public int Read(Span<byte> buffer)
+#else
     public override int Read(Span<byte> buffer)
+#endif
     {
         var copied = 0;
         Span<byte> tag = stackalloc byte[16];
@@ -165,8 +177,12 @@ internal sealed class EncryptedReadStream : Stream
         }
         return copied;
     }
+#if NETFRAMEWORK
+    public ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+#else
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
-    { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(Read(buffer.Span)); }
+#endif
+    { token.ThrowIfCancellationRequested(); return new(Read(buffer.Span)); }
     public override long Seek(long offset, SeekOrigin origin)
     {
         var value = checked(origin switch { SeekOrigin.Begin => offset, SeekOrigin.Current => _position + offset, SeekOrigin.End => Length + offset, _ => throw new ArgumentException("Invalid seek origin.") });

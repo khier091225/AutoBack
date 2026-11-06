@@ -15,12 +15,17 @@ public sealed record RestoreResult(Guid OperationId, Guid BackupJobId, Guid Back
 
 public sealed partial class RestoreEngine
 {
+#if NETFRAMEWORK
+    private static readonly Regex LegacyDeviceName = new(@"^(CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[0-9\u00b9\u00b2\u00b3]|LPT[0-9\u00b9\u00b2\u00b3])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static Regex DeviceName() => LegacyDeviceName;
+#else
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DeviceName();
+#endif
 
     public static void ValidateRelativePath(string? path)
     {
-        if (string.IsNullOrEmpty(path) || path.Length > 4096 || path.Contains('\\') || path.StartsWith('/') || path.Any(char.IsControl))
+        if (string.IsNullOrEmpty(path) || path!.Length > 4096 || path.Contains('\\') || path.StartsWith('/') || path.Any(char.IsControl))
             throw new InvalidDataException("The backup contains an unsafe relative path.");
         foreach (var segment in path.Split('/'))
             if (segment is "" or "." or ".." || segment.EndsWith(' ') || segment.EndsWith('.') ||
@@ -48,7 +53,7 @@ public sealed partial class RestoreEngine
         if (entries.Length != 1 || entries[0].Length <= 0 || entries[0].Length > limits.MaxManifestBytes)
             throw new InvalidDataException("The archive must contain one bounded AutoBack manifest.");
         CheckEntryType(entries[0], directory: false);
-        await using var stream = entries[0].Open();
+        using var stream = entries[0].Open();
         // Reading at most the declared bounded size also prevents a forged manifest entry from expanding indefinitely.
         using var buffer = new MemoryStream();
         var bytes = new byte[64 * 1024];
@@ -129,7 +134,7 @@ public sealed partial class RestoreEngine
         progress?.Invoke(new("Validating", 0, 0, 0, "Validating the archive manifest and all restore paths."));
         try
         {
-            await using var input = ArchiveFile.OpenRead(Path.GetFullPath(archivePath), keys);
+            using var input = ArchiveFile.OpenRead(Path.GetFullPath(archivePath), keys);
             await ArchiveFile.AuthenticateAsync(input, cancellationToken);
             using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: true);
             var manifest = await ReadManifestAsync(archive, limits, cancellationToken);
@@ -171,14 +176,14 @@ public sealed partial class RestoreEngine
                 Directory.CreateDirectory(SafePath(payload, directory));
             long restoredBytes = 0;
             var restoredFiles = 0;
-            var lastProgress = Environment.TickCount64;
+            var lastProgress = Protocol.MonotonicMilliseconds;
             foreach (var file in manifest.Files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var target = SafePath(payload, file.Path);
                 BackupPlan.CheckNoReparse(Path.GetDirectoryName(target)!);
-                await using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
-                await using (var content = archive.GetEntry("files/" + file.Path)!.Open())
+                using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, FileOptions.Asynchronous))
+                using (var content = archive.GetEntry("files/" + file.Path)!.Open())
                 using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                 {
                     var buffer = new byte[128 * 1024];
@@ -192,10 +197,10 @@ public sealed partial class RestoreEngine
                         hash.AppendData(buffer, 0, read);
                         written += read;
                         restoredBytes += read;
-                        if (Environment.TickCount64 - lastProgress >= 200)
+                        if (Protocol.MonotonicMilliseconds - lastProgress >= 200)
                         {
                             progress?.Invoke(new("Restoring", total == 0 ? 1 : 1 + (int)((double)restoredBytes / total * 78), restoredFiles, restoredBytes, "Restoring " + Short(file.Path)));
-                            lastProgress = Environment.TickCount64;
+                            lastProgress = Protocol.MonotonicMilliseconds;
                         }
                     }
                     if (written != file.Length || !Convert.ToHexString(hash.GetHashAndReset()).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -208,7 +213,7 @@ public sealed partial class RestoreEngine
             }
             progress?.Invoke(new("Verifying", 80, restoredFiles, restoredBytes, "Reading back the restored files and verifying the complete file set."));
             await VerifyPayloadAsync(payload, manifest, cancellationToken);
-            await using var raw = File.OpenRead(archivePath);
+            using var raw = File.OpenRead(archivePath);
             var archiveHash = Convert.ToHexString(await SHA256.HashDataAsync(raw, cancellationToken));
             var result = new RestoreResult(operation, manifest.JobId, manifest.AgentId, DateTimeOffset.UtcNow, source.Kind,
                 source.Description, destination, Path.Combine(destination, "files"), archiveHash, restoredFiles, manifest.Directories.Count, restoredBytes, Roots: manifest.Roots);
@@ -249,14 +254,14 @@ public sealed partial class RestoreEngine
         var manifestFile = Path.Combine(destination, "manifest.json");
         if ((File.GetAttributes(manifestFile) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("The restored manifest is a link.");
         if (new FileInfo(manifestFile).Length > limits.MaxManifestBytes) throw new InvalidDataException("Restored manifest exceeds its limit.");
-        await using var manifestInput = File.OpenRead(manifestFile);
+        using var manifestInput = File.OpenRead(manifestFile);
         var manifest = await JsonSerializer.DeserializeAsync<BackupManifest>(manifestInput, Protocol.Json, token)
             ?? throw new InvalidDataException("The restored folder has no manifest.");
         ValidateManifest(manifest, limits);
         var reportPath = Path.Combine(destination, "restore-report.json");
         if ((File.GetAttributes(reportPath) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("The restore report is a link.");
         if (new FileInfo(reportPath).Length > 64 * 1024) throw new InvalidDataException("Restore report is too large.");
-        await using var reportInput = File.OpenRead(reportPath);
+        using var reportInput = File.OpenRead(reportPath);
         var report = await JsonSerializer.DeserializeAsync<RestoreResult>(reportInput, Protocol.Json, token)
             ?? throw new InvalidDataException("The restored folder has no restore report.");
         if (report.State != "Completed" || report.OperationId == Guid.Empty || report.BackupJobId != manifest.JobId || report.BackupAgentId != manifest.AgentId ||
@@ -293,7 +298,7 @@ public sealed partial class RestoreEngine
         {
             var target = SafePath(payload, file.Path);
             BackupPlan.CheckNoReparse(Path.GetDirectoryName(target)!);
-            await using var input = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous);
+            using var input = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read, 128 * 1024, FileOptions.Asynchronous);
             if (input.Length != file.Length || !Convert.ToHexString(await SHA256.HashDataAsync(input, token)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("A restored file is missing, changed, or corrupt: " + Short(file.Path));
         }
@@ -316,7 +321,7 @@ public sealed partial class RestoreEngine
     }
     private static async Task WriteJsonAsync<T>(string path, T value, CancellationToken token)
     {
-        await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous);
+        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous);
         await JsonSerializer.SerializeAsync(output, value, Protocol.Json, token);
         await output.FlushAsync(token);
         output.Flush(flushToDisk: true);

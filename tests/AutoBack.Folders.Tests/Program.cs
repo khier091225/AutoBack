@@ -33,6 +33,7 @@ internal static class Program
             using (var form = Hidden(new BackupFoldersForm()))
             {
                 form.Show(); Application.DoEvents();
+                form.LocalOnlyMode.Checked = true;
                 Check(!form.SaveButton.Enabled, "empty configuration cannot be saved");
                 Check(form.AddFolder(sources[0]) && form.AddFolder(sources[1]), "two independent source folders can be added");
                 Check(!form.AddFolder(sources[0]) && !form.AddFolder(Path.GetDirectoryName(sources[0])!), "duplicate and overlapping source picks are rejected");

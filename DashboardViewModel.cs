@@ -48,17 +48,20 @@ public sealed class Computer : ObservableObject
     public string Team => $"{MachineName} · agent {AgentVersion}";
     public IReadOnlyList<string> SourceFolders => _snapshot?.Configuration is { } config ? config.Sources ?? (IReadOnlyList<string>)[config.Source] : [];
     public string Folder => SourceFolders.Count == 1 ? SourceFolders[0] : SourceFolders.Count > 1 ? $"{SourceFolders.Count} selected folders" : "Not configured";
-    public string SourceFolderSummary => SourceFolders.Count == 0 ? "Choose backup folders on this client" : $"{SourceFolders.Count} backup folder{(SourceFolders.Count == 1 ? "" : "s")} · view details ↗";
+    public string SourceFolderSummary => SourceFolders.Count == 0 ? "Choose backup folders on this client" : $"{SourceFolders.Count} backup folder{(SourceFolders.Count == 1 ? "" : "s")} · {DestinationMode}";
     public string SourceFoldersText => SourceFolders.Count == 0 ? "Not configured" : string.Join(Environment.NewLine, SourceFolders);
     public string Destination => _snapshot?.Configuration?.Destination ?? "Not configured";
+    public string Target => _snapshot?.Configuration?.Target ?? BackupTargets.LegacyBoth;
+    public string DestinationMode => BackupTargets.Label(Target);
     public bool Configured => _snapshot?.Configuration is not null;
     public HostBackupJob? LatestJob => _snapshot?.LatestJob;
     public bool IsBusy => LatestJob is not null && !BackupStates.Terminal(LatestJob.Report.State);
-    public bool CanBackup => Configured && !IsBusy;
+    public bool CanBackup => Configured && !IsBusy && (Target != BackupTargets.GoogleDrive || DriveConnected);
     public string Size => LatestJob is not null && (LatestJob.Report.TotalBytes > 0 || LatestJob.Report.State == "Completed") ? FormatBytes(LatestJob.Report.TotalBytes) : "—";
     public string Status => IsBusy && LatestJob!.CancelRequested ? Online ? "Cancelling" : "Cancel pending"
         : IsBusy && !Online ? LatestJob!.Report.State == "Queued" ? "Waiting for PC" : "Connection lost"
-        : LatestJob?.Report.State == "Completed" ? "Local complete"
+        : LatestJob?.Report.State == "Completed" ? LatestJob.Report.Target == BackupTargets.GoogleDrive
+            ? LatestJob.Report.TemporaryArchiveRemoved ? "Temp cleaned" : "Prepared for upload" : "Local complete"
         : LatestJob?.Report.State ?? (Configured ? "Ready" : "Not configured");
     public string StatusColor => Status is "Failed" or "Connection lost" ? "#B16C13" : Status is "Ready" or "Local complete" ? "#14806D" : "#6F7890";
     public string StatusBackground => Status is "Failed" or "Connection lost" ? "#FFF5E4" : Status is "Ready" or "Local complete" ? "#EAF6F1" : "#F0F2F7";
@@ -72,19 +75,21 @@ public sealed class Computer : ObservableObject
     public bool IsUploading => IsBusy;
     public int Progress => LatestJob?.Report.Percent ?? 0;
     public string ProgressText => IsBusy && !Online ? $"{Status} · last reported {Progress}%" : $"{Status} · {Progress}%";
-    public string BackupDetail => LatestJob?.Report.Detail ?? (Configured ? "Ready for a local backup." : "Choose source and destination folders using the agent's configure command.");
+    public string BackupDetail => LatestJob?.Report.TemporaryArchiveRemoved == true ? "Google Drive upload verified; temporary archive automatically cleaned."
+        : LatestJob?.Report.Detail ?? (Configured ? "Ready to back up to the selected destination." : "Choose source folders and Google Drive or Local only on this client.");
     public string CloudAccount => _snapshot?.CloudConfiguration?.Account ?? "";
-    public CloudReport? LatestCloud => _snapshot?.LatestCloudJob?.Cloud;
-    public string CloudStatus => LatestCloud?.State == "Completed" ? "Cloud complete"
+    public CloudReport? LatestCloud => Target == BackupTargets.GoogleDrive ? LatestJob?.Cloud : _snapshot?.LatestCloudJob?.Cloud;
+    public string CloudStatus => Target == BackupTargets.LocalOnly ? "Local only" : LatestCloud?.State == "Completed" ? "Cloud complete"
         : _snapshot?.CloudConfiguration?.State == "Needs sign-in" ? "Needs sign-in"
         : LatestCloud?.State == "Uploading" && !Online ? "Connection lost"
         : LatestCloud?.State ?? (_snapshot?.CloudConfiguration?.State == "Connected" ? "Ready" : "Not connected");
     public string CloudColor => CloudStatus is "Failed" or "Needs sign-in" or "Connection lost" ? "#B16C13" : CloudStatus == "Cloud complete" ? "#14806D" : "#397DB7";
     public string CloudBackground => CloudStatus is "Failed" or "Needs sign-in" or "Connection lost" ? "#FFF5E4" : CloudStatus == "Cloud complete" ? "#EAF6F1" : "#EDF5FF";
     public int CloudPercent => LatestCloud?.Percent ?? 0;
-    public bool CloudActive => LatestCloud?.State is "Uploading" or "Queued" or "Retrying";
+    public bool CloudActive => Target != BackupTargets.LocalOnly && LatestCloud?.State is "Uploading" or "Queued" or "Retrying";
     public bool DriveConnected => _snapshot?.CloudConfiguration?.State == "Connected";
-    public string CloudDetail => $"{CloudAccount} · {LatestCloud?.Detail ?? _snapshot?.CloudConfiguration?.Detail ?? "Run drive-connect on this client to authorize Google Drive."}";
+    public string CloudDetail => Target == BackupTargets.LocalOnly ? "Automatic Google Drive uploads are paused. New backups stay in the selected local folder."
+        : $"{CloudAccount} · {LatestCloud?.Detail ?? _snapshot?.CloudConfiguration?.Detail ?? "Run drive-connect on this client to authorize Google Drive."}";
     public RestoreSummary? LatestRestore => _snapshot?.LatestRestore;
     public string RestoreStatus => LatestRestore?.State == "Completed" ? "Verified" : LatestRestore?.State ?? "No restore reported";
     public string RestoreDestination => LatestRestore?.Destination ?? "Choose a new folder on the client when restoring.";
@@ -105,6 +110,7 @@ public sealed class Computer : ObservableObject
         foreach (var property in new[] { nameof(LatestRestore), nameof(RestoreStatus), nameof(RestoreDestination), nameof(RestoreDetail), nameof(RestoreColor) }) Changed(property);
         Changed(nameof(ProtectionText)); Changed(nameof(MaintenanceText));
         Changed(nameof(SourceFolders)); Changed(nameof(SourceFolderSummary)); Changed(nameof(SourceFoldersText));
+        Changed(nameof(Target)); Changed(nameof(DestinationMode));
     }
 
     public static string FormatBytes(long bytes) => bytes >= 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024 * 1024):0.0} GB" : bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024):0.0} MB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes} B";
@@ -112,12 +118,13 @@ public sealed class Computer : ObservableObject
 
 public sealed record ActivityEntry(string Title, string Description, string Time, string Symbol, string Color);
 public sealed record BackupHistoryEntry(string Computer, string State, string Time, string Detail, string ArchivePath,
-    string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "", bool LocalPruned = false, bool CloudTrashed = false, string Trigger = "Manual", int Attempt = 0)
+    string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "", bool LocalPruned = false, bool CloudTrashed = false, string Trigger = "Manual", int Attempt = 0,
+    string Target = BackupTargets.LegacyBoth, bool TemporaryRemoved = false)
 {
     public bool HasCloudLink => CloudLink.Length > 0 && !CloudTrashed;
-    public bool CanRestore => State == "Completed" && ((!LocalPruned && ArchivePath.Length > 0) || HasCloudLink);
-    public string LocalDisplay => LocalPruned ? "Expired (retention)" : State;
-    public string CloudDisplay => CloudTrashed ? "In Drive Trash (retention)" : CloudState;
+    public bool CanRestore => State == "Completed" && ((Target != BackupTargets.GoogleDrive && !LocalPruned && ArchivePath.Length > 0) || HasCloudLink);
+    public string LocalDisplay => TemporaryRemoved ? "Temporary archive cleaned" : Target == BackupTargets.GoogleDrive && State == "Completed" ? "Prepared for upload" : LocalPruned ? "Expired (retention)" : State;
+    public string CloudDisplay => Target == BackupTargets.LocalOnly ? "Not used (local only)" : CloudTrashed ? "In Drive Trash (retention)" : CloudState;
     public string TriggerText => $"{Trigger} · attempt {Attempt + 1}";
 }
 
@@ -358,9 +365,10 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
         foreach (var computer in Computers.Where(c => c.CloudActive && !CloudJobs.Contains(c))) CloudJobs.Add(computer);
         var history = _host.GetJobs().OrderByDescending(j => j.UpdatedUtc).Take(100).Select(j => new BackupHistoryEntry(
             j.AgentName, !BackupStates.Terminal(j.Report.State) && j.CancelRequested ? "Cancelling" : j.Report.State,
-            j.UpdatedUtc.ToLocalTime().ToString("MMM dd, hh:mm:ss tt"), j.Report.Detail, j.Report.ArchivePath ?? "",
+            j.UpdatedUtc.ToLocalTime().ToString("MMM dd, hh:mm:ss tt"), j.Report.TemporaryArchiveRemoved ? "Google Drive upload verified; temporary archive cleaned." : j.Report.Detail,
+            j.Report.Target == BackupTargets.GoogleDrive ? "" : j.Report.ArchivePath ?? "",
             j.Cloud?.State ?? (j.Report.State == "Completed" ? "Not queued" : BackupStates.Terminal(j.Report.State) ? "Not applicable" : "Waiting for local backup"), j.Cloud?.Detail ?? "", j.Cloud?.WebLink ?? "",
-            j.Report.ArchivePruned, j.Cloud?.Trashed ?? false, j.Trigger, j.Command.Attempt)).ToArray();
+            j.Report.ArchivePruned, j.Cloud?.Trashed ?? false, j.Trigger, j.Command.Attempt, j.Report.Target, j.Report.TemporaryArchiveRemoved)).ToArray();
         if (!BackupHistory.SequenceEqual(history))
         {
             BackupHistory.Clear();

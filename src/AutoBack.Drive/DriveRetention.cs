@@ -27,7 +27,7 @@ public sealed class DriveRetention(ProtectedStore store, HttpClient http, Guid a
             var remote = await GetOwned(old);
             if (!remote.Trashed)
             {
-                using var response = await api.SendAsync(() => new(HttpMethod.Patch, $"https://www.googleapis.com/drive/v3/files/{remote.Id}")
+                using var response = await api.SendAsync(() => new(new HttpMethod("PATCH"), $"https://www.googleapis.com/drive/v3/files/{remote.Id}")
                 { Content = JsonContent.Create(new { trashed = true }) }, token);
                 remote = await GetOwned(old);
                 if (!remote.Trashed) throw new InvalidDataException("Google Drive did not confirm retention trashing.");

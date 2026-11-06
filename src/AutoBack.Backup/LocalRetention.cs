@@ -65,7 +65,7 @@ public static class LocalRetention
             await LocalBackupEngine.VerifyAsync(path, manifest, token, keys);
             if (job.Report.ArchiveSha256 is { } expected)
             {
-                await using var raw = File.OpenRead(path);
+                using var raw = File.OpenRead(path);
                 if (!Convert.ToHexString(await SHA256.HashDataAsync(raw, token)).Equals(expected, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Retention refused a changed archive.");
             }

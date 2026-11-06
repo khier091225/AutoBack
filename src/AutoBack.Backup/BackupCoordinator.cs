@@ -2,7 +2,8 @@ using AutoBack.Connection;
 
 namespace AutoBack.Backup;
 
-public sealed record LocalJob(BackupCommand Command, BackupReport Report, bool Acknowledged = false);
+public sealed record LocalJob(BackupCommand Command, BackupReport Report, bool Acknowledged = false,
+    string Target = BackupTargets.LegacyBoth, string? CacheRoot = null, string? CloudAccountKey = null);
 public sealed record JobJournal(List<LocalJob> Jobs);
 
 /// <summary>Runs one backup at a time while transport polling continues independently.</summary>
@@ -15,12 +16,15 @@ public sealed class BackupCoordinator : IAsyncDisposable
     private Task? _task;
     private CancellationTokenSource? _cancellation;
     private bool _stopping;
+    private readonly Func<string?>? _cloudAccount;
+    public const string JournalFile = "jobs-v2.dat";
 
-    public BackupCoordinator(ProtectedStore store, Guid agentId)
+    public BackupCoordinator(ProtectedStore store, Guid agentId, Func<string?>? cloudAccount = null)
     {
         _store = store;
         _agentId = agentId;
-        _journal = store.Load<JobJournal>("jobs.dat") ?? new([]);
+        _cloudAccount = cloudAccount;
+        _journal = store.Load<JobJournal>(JournalFile) ?? store.Load<JobJournal>("jobs.dat") ?? new([]);
         if (_journal.Jobs is null) throw new InvalidDataException("The local job journal is invalid.");
         var recovered = _journal.Jobs.Select(j => BackupStates.Terminal(j.Report.State) ? j : j with
         {
@@ -91,6 +95,16 @@ public sealed class BackupCoordinator : IAsyncDisposable
         try
         {
             var plan = LoadPlan() ?? throw new InvalidOperationException("Source and destination folders are not configured on this client.");
+            if (plan.PlanId != command.PlanId) throw new InvalidOperationException("Folder or destination settings changed after this backup was queued. Request a new job.");
+            CapturePlan(command.JobId, plan, null);
+            string? accountKey = null;
+            if (plan.Target == BackupTargets.GoogleDrive)
+            {
+                if (plan.Destination != BackupPlan.CacheDirectory(_store.DirectoryPath)) throw new InvalidDataException("Google Drive staging must use this agent's managed cache.");
+                accountKey = _cloudAccount?.Invoke();
+                if (!Protocol.ValidSecret(accountKey)) throw new InvalidOperationException("Connect Google Drive on this client before starting a cloud backup. No temporary archive was created.");
+            }
+            if (accountKey is not null) CapturePlan(command.JobId, plan, accountKey);
             var key = EncryptionVault.Load(_store).Active;
             if (command.Encrypt is { } expected && expected != (key is not null)) throw new InvalidOperationException("Encryption settings changed after the backup was queued. Request a new job.");
             var result = await new LocalBackupEngine().CreateAsync(plan, _agentId, command,
@@ -100,7 +114,8 @@ public sealed class BackupCoordinator : IAsyncDisposable
             Update(command.JobId, old => old with { State = "Completed", Percent = 100, BytesCopied = result.Bytes,
                 TotalBytes = result.Bytes, FilesCopied = result.Files, TotalFiles = result.Files, ArchivePath = result.ArchivePath,
                 Encrypted = result.Encrypted, ArchiveSha256 = result.ArchiveSha256,
-                Detail = result.Encrypted ? "Encrypted backup completed; authenticated decryption and SHA-256 verification passed." : "Local backup completed; the saved ZIP passed SHA-256 verification." });
+                Detail = plan.Target == BackupTargets.GoogleDrive ? "Temporary archive prepared and verified; waiting for confirmed Google Drive upload."
+                    : result.Encrypted ? "Encrypted backup completed; authenticated decryption and SHA-256 verification passed." : "Local backup completed; the saved ZIP passed SHA-256 verification." });
         }
         catch (OperationCanceledException)
         {
@@ -126,9 +141,21 @@ public sealed class BackupCoordinator : IAsyncDisposable
 
     private void Save(JobJournal journal)
     {
-        _store.Save("jobs.dat", journal);
+        _store.Save(JournalFile, journal);
         _journal = journal;
     }
+
+    private void CapturePlan(Guid jobId, BackupPlan plan, string? accountKey)
+    {
+        lock (_gate)
+        {
+            Save(new(_journal.Jobs.Select(j => j.Command.JobId == jobId ? j with
+            { Target = plan.Target, CacheRoot = plan.Target == BackupTargets.GoogleDrive ? plan.Destination : null, CloudAccountKey = accountKey,
+                Report = j.Report with { Target = plan.Target, Sequence = j.Report.Sequence + 1 } } : j).ToList()));
+        }
+    }
+
+    public void MarkTemporaryRemoved(Guid id) => Update(id, old => old with { ArchivePruned = true, TemporaryArchiveRemoved = true });
 
     public async ValueTask DisposeAsync()
     {
