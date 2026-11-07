@@ -42,7 +42,7 @@ For service mode, grant **NT AUTHORITY\LocalService** Read/list access to every 
 - Select 1–20 existing local folders. One parent already includes all descendants; duplicate, overlapping parent/child selections and junctions/symbolic links are rejected.
 - The destination and each source must stay separate; neither may contain the other. Network shares/mapped network drives remain unsupported.
 - Source paths are bounded to 1024 characters each and 20,000 UTF-8 bytes combined so the host receives the full configuration. Normal Windows path/file-system limits also apply.
-- One source keeps archive format 1; multiple sources use format 2. Mode/source changes produce a new plan identity. Update both endpoints to v0.8/protocol 4; older clients cannot use the new modes. Existing single-folder backups and recovery exports remain supported.
+- Local snapshot staging uses archive format 1 for one source or format 2 for multiple sources. Google Drive stores one incremental PC folder with stable, separate source labels; it uploads changed files and retains removed source files. Mode/source changes produce a new plan identity. Update both endpoints to v0.9.0/protocol 5. Existing archive backups and recovery exports remain supported. See [incremental behavior](INCREMENTAL-DRIVE.md).
 - Changing the selection/order creates a new plan identity. Retention handles the currently configured plan; older plans are preserved for deliberate review rather than silently swept.
 
 ## Backup and restore layout

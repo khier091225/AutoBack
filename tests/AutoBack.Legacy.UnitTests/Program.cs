@@ -70,7 +70,7 @@ internal static class Program
         await using var resumed = new CloudUploadCoordinator(store, http, agent, "Legacy-x86"); resumed.SetHostAuthorized(true); resumed.Tick(backups.CompletedJobs());
         await Until(() => !resumed.IsBusy && resumed.AllUploads().Single().Report.State == "Completed");
         var cloud = resumed.AllUploads().Single(); resumed.Acknowledge(cloud.Report.JobId, cloud.Report.Sequence);
-        Check(google.BinaryFiles == 1, "resumable upload reuses the same cloud object");
+        Check(google.BinaryFiles == 3, "resumable upload reuses the same two file objects and recovery index");
         var cleanup = new CloudCacheCleanup(store, http, agent);
         Check(await cleanup.RunAsync(backups.AllJobs(), resumed.AllUploads(), backups.MarkTemporaryRemoved) == 1 && !File.Exists(local.Report.ArchivePath), "verified cloud backup cleans only its temporary archive");
         var downloaded = Path.Combine(root, "download.abk");

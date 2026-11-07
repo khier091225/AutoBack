@@ -9,7 +9,7 @@ namespace AutoBack.Connection;
 
 public static partial class Protocol
 {
-    public const int Version = 4;
+    public const int Version = 5;
     public const int DefaultPort = 47831;
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan JobPollInterval = TimeSpan.FromSeconds(1);
@@ -105,7 +105,7 @@ public sealed record HostBackupJob(Guid AgentId, string AgentName, BackupCommand
     DateTimeOffset UpdatedUtc, bool CancelRequested = false, CloudReport? Cloud = null, DateTimeOffset? CloudUpdatedUtc = null, string Trigger = "Manual");
 public sealed record CloudConfiguration(string State, string Account, string Detail);
 public sealed record CloudReport(Guid JobId, long Sequence, string State, int Percent, long BytesUploaded, long TotalBytes,
-    string Detail, string? FileId = null, string? WebLink = null, bool Trashed = false);
+    string Detail, string? FileId = null, string? WebLink = null, bool Trashed = false, bool FolderBased = false, bool Superseded = false);
 public sealed record RestoreSummary(Guid OperationId, string State, string SourceKind, string Destination, int Percent,
     int Files, long Bytes, string Detail, DateTimeOffset UpdatedUtc, Guid? BackupJobId = null);
 
@@ -130,7 +130,8 @@ public static class CloudStates
         report.State is "Queued" or "Uploading" or "Retrying" or "Needs sign-in" or "Failed" or "Completed" &&
         report.Percent is >= 0 and <= 100 && report.BytesUploaded >= 0 && report.TotalBytes >= report.BytesUploaded &&
         BackupStates.ValidText(report.Detail, 1024) && (report.FileId is null || ValidId(report.FileId)) &&
-        (report.WebLink is null || report.WebLink == $"https://drive.google.com/file/d/{report.FileId}/view") &&
+        (report.WebLink is null || report.WebLink == (report.FolderBased ? $"https://drive.google.com/drive/folders/{report.FileId}" : $"https://drive.google.com/file/d/{report.FileId}/view")) &&
+        (!report.Superseded || (report.FolderBased && report.State == "Completed")) &&
         (report.State != "Completed" || (report.Percent == 100 && report.BytesUploaded == report.TotalBytes &&
             ValidId(report.FileId) && report.WebLink is not null));
 }

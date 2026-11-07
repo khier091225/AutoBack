@@ -174,6 +174,10 @@ internal static class Program
             Check(modeSample.CanBackup && modeSample.CloudStatus == "Local only" && !modeSample.CloudActive, "local-only mode needs no Google account and shows no upload activity");
             var temporary = new BackupHistoryEntry("Cloud","Completed","now","","", "Completed", "", "https://drive.google.com/file/d/verified/view",true,Target:BackupTargets.GoogleDrive,TemporaryRemoved:true);
             Check(temporary.CanRestore && temporary.LocalDisplay.Contains("cleaned"), "cloud restore remains available after temporary archive cleanup");
+            var currentFolder=temporary with { CloudLink="https://drive.google.com/drive/folders/pc-folder", FolderBased=true };
+            Check(currentFolder.CanRestore && currentFolder.CloudDisplay=="Current Drive folder" && RestoreInstructionsWindow.BuildInstructions(currentFolder).Contains(currentFolder.CloudLink),"current incremental folder offers its correct folder restore link and instructions");
+            var superseded=currentFolder with { CloudSuperseded=true };
+            Check(!superseded.CanRestore && !superseded.HasCloudLink && superseded.CloudDisplay=="Updated by a newer backup","superseded history never offers the current folder as an old restore point");
             Capture("settings-preview.png");
             var pairingWindow = new AddComputerWindow(viewModel) { Owner = window, Left = -16000, Top = -16000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
             pairingWindow.Show();

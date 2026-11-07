@@ -84,13 +84,15 @@ Sign-in happens in your interactive browser; the background LocalService worker 
 
 ```text
 AutoBack Backups/
-  {Computer name}-{Agent ID}/
-    {Job ID}-backup-{UTC timestamp}.zip
+  {Computer name}/
+    Desktop/
+      test.xlsx
+    _AutoBack.json
 ```
 
-Ang root folder ay nire-reuse kapag nakikita ng parehong OAuth app/account; bawat agent ay may sariling subfolder. Shared Drives and an arbitrary existing destination folder picker are not included in this milestone.
+Sa v0.9.0, iisang PC folder ang ginagamit. New/changed files lang ang upload; files deleted on the PC stay in Drive. Deleted destinations recover automatically. See [incremental folder backup, upgrade and restore](INCREMENTAL-DRIVE.md); update both host and client to protocol 5. Shared Drives and an arbitrary existing destination folder picker are not included.
 
-**Cloud complete confirms the upload.** Para sa restore drill, sundin ang [Restore and verification guide](RESTORE.md): download the selected Drive backup directly to the client and recover into a fresh folder with full SHA-256 readback. Plain ZIPs remain unencrypted; [Automation and rollout](AUTOMATION-ROLLOUT.md) explains authenticated `.abk` encryption/recovery exports and opt-in version retention. Encrypted archives upload as `application/octet-stream` with the same confirmed size/checksum and AutoBack identity checks.
+**Cloud complete confirms the upload.** Para sa restore drill, sundin ang [Restore and verification guide](RESTORE.md): recover the current folder into a fresh local destination with full SHA-256 readback. Without encryption, individual files remain directly readable in Drive. With encryption, their contents use authenticated `.abk` envelopes and recovery keys. Names and the recovery index remain visible. Cloud version-retention counts apply to older archive uploads; the one current incremental folder and its retained files are excluded.
 
 ## F. Interrupted uploads, errors, and retry
 

@@ -101,8 +101,8 @@ public sealed partial class HostServer : IAsyncDisposable
                 a.AgentVersion, a.Address, a.PairedUtc, a.LastSeenUtc,
                 IsRunning && _seenThisRun.Contains(a.Id) && a.LastSeenUtc.HasValue && now - a.LastSeenUtc.Value < _offlineAfter,
                 a.Configuration, _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id),
-                _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed" && (j.Report.Target != BackupTargets.GoogleDrive || j.Cloud?.State == "Completed")), a.CloudConfiguration,
-                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null && !j.Cloud.Trashed).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore, a.Protection)).ToArray();
+                _registry.Jobs!.LastOrDefault(j => j.AgentId == a.Id && j.Report.State == "Completed" && (j.Report.Target != BackupTargets.GoogleDrive || j.Cloud is { State: "Completed", Superseded: false, Trashed: false })), a.CloudConfiguration,
+                _registry.Jobs!.Where(j => j.AgentId == a.Id && j.Cloud is not null && !j.Cloud.Trashed && !j.Cloud.Superseded).OrderByDescending(j => j.CloudUpdatedUtc).FirstOrDefault(), a.LatestRestore, a.Protection)).ToArray();
     }
 
     public IReadOnlyList<HostBackupJob> GetJobs()
@@ -288,7 +288,9 @@ public sealed partial class HostServer : IAsyncDisposable
                 cloudAcknowledged = job;
                 var trashed = job.Cloud is { State: "Completed", Trashed: false } && cloud.Trashed &&
                     cloud with { Sequence = job.Cloud.Sequence, Trashed = false } == job.Cloud;
-                if ((job.Cloud is null || cloud.Sequence > job.Cloud.Sequence) && (job.Cloud?.State != "Completed" || trashed))
+                var superseded = job.Cloud is { State: "Completed", FolderBased: true, Superseded: false } && cloud.Superseded &&
+                    cloud with { Sequence = job.Cloud.Sequence, Superseded = false } == job.Cloud;
+                if ((job.Cloud is null || cloud.Sequence > job.Cloud.Sequence) && (job.Cloud?.State != "Completed" || trashed || superseded))
                 {
                     cloudAcknowledged = job with { Cloud = cloud, CloudUpdatedUtc = now };
                     jobs = jobs.Select(j => j.Command.JobId == cloud.JobId ? cloudAcknowledged : j).ToList();

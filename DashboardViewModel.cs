@@ -95,7 +95,7 @@ public sealed class Computer : ObservableObject
     public string RestoreDestination => LatestRestore?.Destination ?? "Choose a new folder on the client when restoring.";
     public string RestoreDetail => LatestRestore is { } r ? $"{r.SourceKind} · {r.Files} files · {FormatBytes(r.Bytes)} · {r.UpdatedUtc.ToLocalTime():MMM dd, hh:mm tt} · {r.Detail}" : "Run restore on this client, then restart its agent to send the saved result here.";
     public string RestoreColor => RestoreStatus == "Verified" ? "#14806D" : RestoreStatus is "Failed" or "Interrupted" ? "#B16C13" : "#6F7890";
-    public string ProtectionText => _snapshot?.Protection is { } p ? $"{(p.Encrypted ? "AES-256-GCM" : "Plain ZIP")} · Local keep: {(p.KeepLocal == 0 ? "off" : p.KeepLocal)} · Cloud keep: {(p.KeepCloud == 0 ? "off" : p.KeepCloud)}" : "Protection settings not reported yet.";
+    public string ProtectionText => _snapshot?.Protection is { } p ? $"{(p.Encrypted ? "AES-256-GCM" : Target == BackupTargets.GoogleDrive ? "Individual Drive files" : "Plain ZIP")} · Local keep: {(p.KeepLocal == 0 ? "off" : p.KeepLocal)} · Cloud keep: {(Target == BackupTargets.GoogleDrive ? "one current folder" : p.KeepCloud == 0 ? "off" : p.KeepCloud)}" : "Protection settings not reported yet.";
     public string MaintenanceText => _snapshot?.Protection is { } p ? $"{p.State}: {p.Detail}" : "Update and restart the client to report encryption and retention settings.";
 
     public void Update(AgentSnapshot snapshot)
@@ -119,12 +119,12 @@ public sealed class Computer : ObservableObject
 public sealed record ActivityEntry(string Title, string Description, string Time, string Symbol, string Color);
 public sealed record BackupHistoryEntry(string Computer, string State, string Time, string Detail, string ArchivePath,
     string CloudState = "Not queued", string CloudDetail = "", string CloudLink = "", bool LocalPruned = false, bool CloudTrashed = false, string Trigger = "Manual", int Attempt = 0,
-    string Target = BackupTargets.LegacyBoth, bool TemporaryRemoved = false)
+    string Target = BackupTargets.LegacyBoth, bool TemporaryRemoved = false, bool CloudSuperseded = false, bool FolderBased = false)
 {
-    public bool HasCloudLink => CloudLink.Length > 0 && !CloudTrashed;
+    public bool HasCloudLink => CloudLink.Length > 0 && !CloudTrashed && !CloudSuperseded;
     public bool CanRestore => State == "Completed" && ((Target != BackupTargets.GoogleDrive && !LocalPruned && ArchivePath.Length > 0) || HasCloudLink);
     public string LocalDisplay => TemporaryRemoved ? "Temporary archive cleaned" : Target == BackupTargets.GoogleDrive && State == "Completed" ? "Prepared for upload" : LocalPruned ? "Expired (retention)" : State;
-    public string CloudDisplay => Target == BackupTargets.LocalOnly ? "Not used (local only)" : CloudTrashed ? "In Drive Trash (retention)" : CloudState;
+    public string CloudDisplay => Target == BackupTargets.LocalOnly ? "Not used (local only)" : CloudSuperseded ? "Updated by a newer backup" : CloudTrashed ? "In Drive Trash (retention)" : FolderBased && CloudState == "Completed" ? "Current Drive folder" : CloudState;
     public string TriggerText => $"{Trigger} · attempt {Attempt + 1}";
 }
 
@@ -368,7 +368,7 @@ public sealed class DashboardViewModel : ObservableObject, IAsyncDisposable
             j.UpdatedUtc.ToLocalTime().ToString("MMM dd, hh:mm:ss tt"), j.Report.TemporaryArchiveRemoved ? "Google Drive upload verified; temporary archive cleaned." : j.Report.Detail,
             j.Report.Target == BackupTargets.GoogleDrive ? "" : j.Report.ArchivePath ?? "",
             j.Cloud?.State ?? (j.Report.State == "Completed" ? "Not queued" : BackupStates.Terminal(j.Report.State) ? "Not applicable" : "Waiting for local backup"), j.Cloud?.Detail ?? "", j.Cloud?.WebLink ?? "",
-            j.Report.ArchivePruned, j.Cloud?.Trashed ?? false, j.Trigger, j.Command.Attempt, j.Report.Target, j.Report.TemporaryArchiveRemoved)).ToArray();
+            j.Report.ArchivePruned, j.Cloud?.Trashed ?? false, j.Trigger, j.Command.Attempt, j.Report.Target, j.Report.TemporaryArchiveRemoved, j.Cloud?.Superseded ?? false, j.Cloud?.FolderBased ?? false)).ToArray();
         if (!BackupHistory.SequenceEqual(history))
         {
             BackupHistory.Clear();

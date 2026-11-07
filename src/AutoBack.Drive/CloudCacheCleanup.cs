@@ -32,7 +32,17 @@ public sealed class CloudCacheCleanup(ProtectedStore store, HttpClient http, Gui
             BackupPlan.CheckNoReparse(Path.GetDirectoryName(path)!);
             // Confirm the cloud copy again: account changes, manual trashing or missing remote files must preserve the cache.
             var remote = await api.GetFileAsync(upload.Report.FileId!, token);
-            if (remote is null || remote.Trashed || remote.Id != upload.Report.FileId || !remote.Parents.Contains(folder.ClientId) ||
+            if (upload.FolderBased)
+            {
+                if (remote is null || remote.Trashed || remote.Id != folder.ClientId)
+                    throw new InvalidDataException("The current PC folder is missing. The temporary archive was preserved.");
+                var tree = await DriveTreeReader.ReadSnapshotAsync(api, remote, store.DirectoryPath, token);
+                var current = uploads.SingleOrDefault(u => u.FolderBased && u.JobId == tree.JobId && u.AccountKey == account.Key && u.Acknowledged && u.Report is { State: "Completed", Superseded: false });
+                if (current is null || (!upload.Report.Superseded && tree.JobId != upload.JobId))
+                    throw new InvalidDataException("The current incremental backup is not acknowledged. Temporary archives were preserved.");
+                await DriveTreeReader.VerifyFilesAsync(api, tree, token);
+            }
+            else if (remote is null || remote.Trashed || remote.Id != upload.Report.FileId || !remote.Parents.Contains(folder.ClientId) ||
                 remote.Properties.GetValueOrDefault("autobackJob") != job.Command.JobId.ToString("N") ||
                 remote.Properties.GetValueOrDefault("autobackAgent") != agentId.ToString("N") ||
                 remote.Properties.GetValueOrDefault("autobackSha256") != job.Report.ArchiveSha256 || remote.Size != upload.Checkpoint.Length ||

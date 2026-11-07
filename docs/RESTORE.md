@@ -1,6 +1,6 @@
 # Restore and verification (v0.8)
 
-Google Drive is the default new backup destination; its verified temporary archive is automatically cleaned. Recover those versions using their Drive ID/link. Local only retains permanent local files for local archive recovery. See [destination modes](DESTINATION-MODES.md). Archive formats 1/2 and encryption recovery exports remain compatible.
+Google Drive is the default destination. In v0.9.0 it stores one current incremental PC folder: use its folder ID/link to restore the latest verified contents, including files retained after source removal. Older folder job dates are superseded, not separate restore points. Updates must finish before folder restore can complete. See [incremental Drive behavior and upgrade](INCREMENTAL-DRIVE.md). Local ZIP/ABK backups and older Drive archive links remain supported; archive formats 1/2 and recovery exports remain compatible.
 
 Restore a local AutoBack `.zip`/encrypted `.abk` or download one directly from Google Drive into a **new local folder**. Every recovered file is checked against the manifest, then read back from disk and checked again before the recovery folder is published. Original files and existing destination folders are preserved. Encrypted archives authenticate all chunks and the committed length before extraction. On a different client, first import the backup's password-protected recovery export; see [encryption and recovery keys](AUTOMATION-ROLLOUT.md).
 

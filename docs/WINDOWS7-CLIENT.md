@@ -1,8 +1,8 @@
 # Windows 7 SP1 32-bit client — legacy pilot
 
-This separate **x86 .NET Framework 4.8 agent** connects to the current v0.8 host using protocol 4 and pinned TLS 1.2. The host stays on its existing supported modern Windows PC. The ordinary `win-x64` installer cannot run on Windows 7; changing its CPU target alone is insufficient.
+This separate **x86 .NET Framework 4.8 agent** connects to the current v0.9.0 host using protocol 5 and pinned TLS 1.2. It shares the [incremental Drive folder backup](INCREMENTAL-DRIVE.md), encrypted per-file uploads and folder restore. Update host and agent together. The host stays on its existing supported modern Windows PC. The ordinary `win-x64` installer cannot run on Windows 7; changing its CPU target alone is insufficient.
 
-Package: `artifacts/installers/AutoBack-Agent-Legacy-0.8.3-win-x86.msi`.
+Package: `artifacts/installers/AutoBack-Agent-Legacy-0.9.0-win-x86.msi`.
 
 **Status:** built for Windows 7 SP1 x86. Automated checks run in actual 32-bit Framework processes on the development Windows PC. Actual Windows 7 installation, Schannel/Google connectivity, service startup and reboot checks remain required before rollout. This is not a claim of Microsoft support: Windows 7 itself is out of support.
 

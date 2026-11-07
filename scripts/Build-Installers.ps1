@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.3', [switch]$SkipPublish,
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.0', [switch]$SkipPublish,
     [ValidateSet('Both','Host','Agent','AgentLegacy')][string]$TargetPackage = 'Both')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))

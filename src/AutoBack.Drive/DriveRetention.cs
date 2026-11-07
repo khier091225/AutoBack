@@ -15,7 +15,7 @@ public sealed class DriveRetention(ProtectedStore store, HttpClient http, Guid a
         if (folders is null || !folders.TryGetValue(account.Key, out var folder)) return 0;
         var api = new DriveApi(http, tokens, account.Key);
         // Journal order is completion-discovery order, independent of arbitrary file names and remote listing order.
-        var completed = uploads.Where(u => u.AccountKey == account.Key && u.Report.State == "Completed" && !u.Report.Trashed).Reverse().ToArray();
+        var completed = uploads.Where(u => !u.FolderBased && u.AccountKey == account.Key && u.Report.State == "Completed" && !u.Report.Trashed).Reverse().ToArray();
         foreach (var survivor in completed.Take(keep))
         {
             var remote = await GetOwned(survivor);

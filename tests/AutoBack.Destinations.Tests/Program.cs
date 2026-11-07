@@ -114,7 +114,7 @@ internal static class Program
             Check(await cleanup.RunAsync(backups.AllJobs(),uploads.AllUploads(),backups.MarkTemporaryRemoved) == 1 && backups.AllJobs().Single().Report.TemporaryArchiveRemoved, "restart finishes cleanup annotation without creating another upload");
             await cloudClient.PollAsync(cloudIdentity,plan.Summary,backups.NextReport());
             Check(cloudHost.GetJobs().Single().Report.TemporaryArchiveRemoved, "host accepts the authenticated temporary-cleanup result without rewriting backup success");
-            Check(google.BinaryFiles == 1 && File.ReadAllText(Path.Combine(source,"document.txt")).Contains("Synthetic"), "only the owned temporary archive is removed; source and verified cloud file remain");
+            Check(google.BinaryFiles == 2 && File.ReadAllText(Path.Combine(source,"document.txt")).Contains("Synthetic"), "only the owned temporary archive is removed; source, individual Drive file and recovery index remain");
         }
         // A transfer failure must keep its archive and stable resumable upload identity for retry.
         var retryStore = Store("retry"); Seed(retryStore); var retryPlan = BackupPlan.CreateForTarget([source],BackupTargets.GoogleDrive,null,retryStore.DirectoryPath); retryStore.Save("backup-plan.dat",retryPlan);
@@ -132,7 +132,7 @@ internal static class Program
             await using var resumed = new CloudUploadCoordinator(retryStore,http,agentId,"Retry"); resumed.SetHostAuthorized(true); resumed.Tick(backups.CompletedJobs());
             await Until(() => resumed.AllUploads().Single().Report.State == "Completed" && !resumed.IsBusy);
             var report = resumed.AllUploads().Single().Report; resumed.Acknowledge(report.JobId,report.Sequence);
-            Check(await new CloudCacheCleanup(retryStore,http,agentId).RunAsync(backups.AllJobs(),resumed.AllUploads(),backups.MarkTemporaryRemoved) == 1 && google.BinaryFiles == 1, "retry verifies the original cloud file then cleans the cache once");
+            Check(await new CloudCacheCleanup(retryStore,http,agentId).RunAsync(backups.AllJobs(),resumed.AllUploads(),backups.MarkTemporaryRemoved) == 1 && google.BinaryFiles == 2, "retry verifies the original cloud file and recovery index then cleans the cache once");
         }
 
         Console.WriteLine("CHECK old-journal migration and real host/client mode changes");

@@ -1,10 +1,10 @@
-# Google Drive by default, or Local only — v0.8
+# Google Drive by default, or Local only — v0.9.0
 
-New setup has two choices per client:
+In v0.9.0 Google Drive stores one incremental PC folder instead of uploading a ZIP per job. See [incremental backup, recovery, upgrade and test guide](INCREMENTAL-DRIVE.md). New setup has two choices per client:
 
 | Mode | Setup | Result |
 | --- | --- | --- |
-| **Google Drive (default)** | Select source folders and connect Google. No permanent local destination to pick. | Client builds/verifies a temporary archive, uploads directly, then removes that archive after cloud confirmation and host acknowledgment. |
+| **Google Drive (default)** | Select source folders and connect Google. No permanent local destination to pick. | One PC folder, individual new/changed files only, deleted source files retained. Verified local snapshot staging clears after cloud confirmation and host acknowledgment. |
 | **Local only** | Select source folders and a separate local destination. Google sign-in is unnecessary. | Permanent ZIP/encrypted versions remain at that destination; automatic Google uploads are paused. |
 
 ## Choose the mode
@@ -35,7 +35,7 @@ Temporary archives live under the agent's ACL-protected data directory in `cloud
 Every temporary archive is verified locally before uploading. A Google-mode job captures its mode, managed cache root, archive SHA-256 and original Google account binding. Cleanup requires all of the following:
 
 - The client and host have acknowledged the completed preparation and cloud upload.
-- Drive upload verification succeeded. The remote file is checked again at cleanup for account/folder/job/agent identity, size and checksums, and must still be available and untrashed.
+- Drive verification succeeded. For folder backups, the current acknowledged recovery index and every mapped folder/file are reconfirmed; for older archive backups, the remote archive identity, size and checksums are reconfirmed. Missing, changed or trashed data preserves the local snapshot.
 - The exact local path belongs to this job under the private cache; the file is not a link and its size/hash still match the verified upload.
 
 Only that archive file and its empty job directory are removed. Sources, permanent local backups, unrelated files, other data directories and existing legacy backups are preserved. Cleanup restarts safely if interrupted between deletion and journal annotation. History shows **Temporary archive cleaned** separately from cloud completion; Drive restore remains available afterward. Preparing an archive alone does not count as a confirmed Google backup.

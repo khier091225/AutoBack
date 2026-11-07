@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$InstallerDirectory, [string]$Version = '0.8.3', [switch]$IncludeLegacy)
+param([string]$InstallerDirectory, [string]$Version = '0.9.0', [switch]$IncludeLegacy)
 $ErrorActionPreference = 'Stop'
 if (-not $InstallerDirectory) { $InstallerDirectory = Join-Path $PSScriptRoot '..\artifacts\installers' }
 $directory = [IO.Path]::GetFullPath($InstallerDirectory)

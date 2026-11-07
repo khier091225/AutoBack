@@ -5,7 +5,7 @@ using AutoBack.Connection;
 namespace AutoBack.Drive;
 
 public sealed record SavedUpload(Guid JobId, string ArchivePath, string AccountKey, UploadCheckpoint Checkpoint,
-    CloudReport Report, DateTimeOffset NextAttemptUtc, int Attempts = 0, bool Acknowledged = false, Guid GrantGeneration = default);
+    CloudReport Report, DateTimeOffset NextAttemptUtc, int Attempts = 0, bool Acknowledged = false, Guid GrantGeneration = default, bool FolderBased = false);
 public sealed record UploadJournal(List<SavedUpload> Uploads);
 
 public sealed class CloudUploadCoordinator : IAsyncDisposable
@@ -15,6 +15,7 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
     private readonly GoogleTokenProvider _tokens;
     private readonly GoogleAuthorization _authorization;
     private readonly DriveUploader _uploader;
+    private readonly DriveTreeUploader _treeUploader;
     private UploadJournal _journal;
     private Task? _task;
     private CancellationTokenSource? _cancellation;
@@ -28,6 +29,7 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
         _tokens = new(store, http);
         _authorization = new(store, http);
         _uploader = new(store, _tokens, http, agentId, agentName);
+        _treeUploader = new(store, http, agentId, agentName);
         _journal = store.Load<UploadJournal>("drive-uploads.dat") ?? new([]);
         if (_journal.Uploads is null) throw new InvalidDataException("The cloud upload journal is invalid.");
         Save(new(_journal.Uploads.Select(u => u.Report.State == "Uploading" ? u with
@@ -79,15 +81,27 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
             var additions = completed.Where(j => j.Target != BackupTargets.LocalOnly && j.Report.Target != BackupTargets.LocalOnly &&
                 (includeLegacy || j.Target == BackupTargets.GoogleDrive) && j.Report.ArchivePath is not null && _journal.Uploads.All(u => u.JobId != j.Command.JobId))
                 .Select(j => new SavedUpload(j.Command.JobId, j.Report.ArchivePath!, j.CloudAccountKey ?? account.Key, new(),
-                    new(j.Command.JobId, 1, "Queued", 0, 0, 0, "Local backup is complete; waiting for direct Google Drive upload."), DateTimeOffset.UtcNow,
-                    GrantGeneration: account.Generation)).ToArray();
+                    new(j.Command.JobId, 1, "Queued", 0, 0, 0, "Local snapshot is complete; waiting for direct Google Drive upload.", FolderBased: j.Target == BackupTargets.GoogleDrive), DateTimeOffset.UtcNow,
+                    GrantGeneration: account.Generation, FolderBased: j.Target == BackupTargets.GoogleDrive)).ToArray();
             if (additions.Length > 0) Save(new([.. _journal.Uploads, .. additions]));
             if (_task is { IsCompleted: false }) return;
+            // Pre-v0.9 jobs that failed before allocating a cloud file can safely enter the new folder format.
+            foreach (var pending in _journal.Uploads.Where(u => !u.FolderBased && u.Checkpoint.FileId is null && u.Report.State != "Completed" &&
+                completed.Any(j => j.Command.JobId == u.JobId && j.Target == BackupTargets.GoogleDrive)).ToArray())
+                Update(pending.JobId, u =>
+                {
+                    var recoverFolder = u.Report.State == "Failed" && u.Report.Detail.StartsWith("The Google Drive backup folder is missing, trashed", StringComparison.Ordinal);
+                    return u with { FolderBased = true, Checkpoint = new(), NextAttemptUtc = recoverFolder ? DateTimeOffset.UtcNow : u.NextAttemptUtc,
+                        Report = u.Report with { FolderBased = true, State = recoverFolder ? "Queued" : u.Report.State,
+                            Detail = recoverFolder ? "Recovering the deleted Drive destination and retrying this saved backup as individual files." : u.Report.Detail } };
+                });
             foreach (var other in _journal.Uploads.Where(u => u.AccountKey != account.Key && u.Report.State is "Queued" or "Retrying").ToArray())
                 Update(other.JobId, u => u with { Report = u.Report with { State = "Needs sign-in", Detail = "This backup is bound to another Google account. Reconnect its original account to resume." } });
             var next = _journal.Uploads.FirstOrDefault(u => u.AccountKey == account.Key &&
                 (u.Report.State is "Queued" or "Retrying" || (u.Report.State == "Needs sign-in" && u.GrantGeneration != account.Generation)) && u.NextAttemptUtc <= DateTimeOffset.UtcNow);
             if (next is null) return;
+            if (next.FolderBased && _journal.Uploads.TakeWhile(u => u.JobId != next.JobId).Any(u => u.FolderBased && u.AccountKey == next.AccountKey && u.Report.State != "Completed"))
+                return; // Never let a delayed older snapshot overwrite a newer incremental backup.
             if (account.NeedsSignIn || account.Key != next.AccountKey)
             {
                 if (next.Report.State != "Needs sign-in")
@@ -107,6 +121,26 @@ public sealed class CloudUploadCoordinator : IAsyncDisposable
         try
         {
             Update(upload.JobId, u => u with { Report = u.Report with { State = "Uploading", Detail = "Checking the local archive and resuming Google Drive upload." } });
+            if (upload.FolderBased)
+            {
+                foreach (var old in AllUploads().Where(u => u.JobId != upload.JobId && u.AccountKey == upload.AccountKey && u.FolderBased && u.Report is { State: "Completed", Superseded: false }))
+                    Update(old.JobId, u => u with { Report = u.Report with { Superseded = true } });
+                var tree = await _treeUploader.UploadAsync(upload.JobId, upload.ArchivePath, upload.AccountKey,
+                    state => Update(upload.JobId, u => u with { Checkpoint = state }),
+                    progress => Update(upload.JobId, u => u with { Report = u.Report with
+                    {
+                        State = "Uploading", BytesUploaded = progress.ConfirmedBytes, TotalBytes = progress.TotalBytes,
+                        Percent = progress.TotalBytes == 0 ? 0 : (int)Math.Min(99, (double)progress.ConfirmedBytes / progress.TotalBytes * 100), Detail = progress.Detail
+                    } }), token);
+                Update(upload.JobId, u => u with
+                {
+                    Checkpoint = u.Checkpoint with { FileId = tree.FolderId, FolderId = tree.FolderId },
+                    Report = u.Report with { State = "Completed", Percent = 100, BytesUploaded = tree.UploadedBytes, TotalBytes = tree.UploadedBytes,
+                        FileId = tree.FolderId, WebLink = $"https://drive.google.com/drive/folders/{tree.FolderId}", FolderBased = true,
+                        Detail = $"Drive folder verified: {tree.UploadedFiles} new/changed file(s) uploaded; {tree.UnchangedFiles} unchanged; {tree.RetainedFiles} retained after source removal. Only changed file contents were sent." }
+                });
+                return;
+            }
             var result = await _uploader.UploadAsync(upload.JobId, upload.ArchivePath, upload.AccountKey, upload.Checkpoint,
                 checkpoint => Update(upload.JobId, u => u with { Checkpoint = checkpoint }),
                 progress => Update(upload.JobId, u => u with { Report = u.Report with

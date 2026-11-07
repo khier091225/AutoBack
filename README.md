@@ -2,7 +2,9 @@
 
 A Windows host dashboard and background client agent for centrally controlled file and folder backups. Intended flow: **host → client command; client → Google Drive upload; client → host progress**.
 
-## Current milestone: verified service-account access checks (v0.8.3)
+## Current milestone: one incremental Drive folder per PC (v0.9.0)
+
+Google Drive mode now keeps `AutoBack Backups/<PC name>/<source folder>/...` and sends only new/changed file contents. The same folder/file IDs are reused; removed source files stay in the backup. Missing/trashed destinations recover automatically. A verified recovery index supports folder restores, interrupted per-file uploads, encrypted contents and safe temporary cleanup. Historical folder jobs are marked superseded instead of offered as old restore points. Update both host and agent to v0.9.0/protocol 5; existing pairing and Google grants are retained. See [incremental Drive behavior, upgrade and test guide](docs/INCREMENTAL-DRIVE.md). This new format has automated simulated-Google validation; earlier live ZIP drills below do not validate it against a real Google account.
 
 Version 0.8.3 fixes Windows error 5 when elevated setup cannot sign in directly as LocalService. A temporary Windows-started helper supplies the verified identity without assigning logon privileges. Administrator tests passed for both the modern and x86 Framework clients, including grants, independent rechecks, locked-file detection and helper cleanup; see `artifacts/service-identity-pilot-modern.json` and `artifacts/service-identity-pilot-legacy.json`. Actual Windows 7 remains a target-PC check.
 
@@ -16,7 +18,7 @@ Removed a client from the host? Use the new **Pair AutoBack Agent again** shortc
 - Single-use, five-minute pairing invitations, certificate-pinned TLS, per-agent credentials, and pairing revocation.
 - Protected host/agent configuration, persistent device identity, automatic agent reconnection, and Windows Service support.
 - Client-selected source/destination folders, host-triggered backups, real progress and errors, and cancellation.
-- A new full ZIP per backup, including empty folders and a SHA-256 manifest; the saved ZIP is verified before completion is reported.
+- Google Drive keeps one current file tree and uploads new/changed files only. Local only keeps versioned ZIP/ABK archives. Both include empty folders and SHA-256 verification.
 - Persistent host job history and client job journal, with idempotent delivery and interrupted-job recovery.
 - Per-client Google Desktop OAuth/PKCE sign-in, DPAPI-protected refresh tokens, resumable direct uploads, retry checkpoints, and remote size/checksum verification.
 - Independent local/cloud job results and a verified Drive link in the host's history. Cloud failure never rewrites a successful local result.
@@ -44,9 +46,9 @@ The automated console pilot also ran **three real agent processes on one physica
 
 ## First run
 
-For the prepared pilot installers, use `artifacts\installers\AutoBack-Host-0.8.3-win-x64.msi` and `AutoBack-Agent-0.8.3-win-x64.msi`. Verify the adjacent `SHA256SUMS.txt` and follow **[automation/deployment setup](docs/AUTOMATION-ROLLOUT.md)** and **[physical-PC rollout checklist](docs/ROLLOUT-CHECKLIST.md)**. The agent MSI starts stopped/manual; its setup helper pairs/configures the client and enables automatic startup after source access is ready. Google mode manages staging permissions; Local only also needs destination access. Console-mode development instructions follow.
+For the prepared pilot installers, use `artifacts\installers\AutoBack-Host-0.9.0-win-x64.msi` and `AutoBack-Agent-0.9.0-win-x64.msi`. Verify the adjacent `SHA256SUMS.txt` and follow **[incremental Drive upgrade/test](docs/INCREMENTAL-DRIVE.md)** and **[physical-PC rollout checklist](docs/ROLLOUT-CHECKLIST.md)**. The agent MSI starts stopped/manual; its setup helper pairs/configures the client and enables automatic startup after source access is ready. Google mode manages staging permissions; Local only also needs destination access. Console-mode development instructions follow.
 
-For a Windows 7 SP1 x86 client, use **`AutoBack-Agent-Legacy-0.8.3-win-x86.msi`**, install Framework 4.8 first, then follow the [legacy guide](docs/WINDOWS7-CLIENT.md). The host stays on modern Windows. The legacy setup shortcut is native and does not require a PowerShell upgrade.
+For a Windows 7 SP1 x86 client, use **`AutoBack-Agent-Legacy-0.9.0-win-x86.msi`**, install Framework 4.8 first, then follow the [legacy guide](docs/WINDOWS7-CLIENT.md). The host stays on modern Windows. The legacy setup shortcut is native and does not require a PowerShell upgrade.
 
 On the host, open `AutoBack.slnx` in Visual Studio and run the **AutoBack** project, or:
 
@@ -74,7 +76,7 @@ Copy the **entire** published folder to the client, together with its invitation
 `configure` opens the client folder manager: choose Google Drive (default) or Local only, add sources and Save folders. Pick a permanent destination only for Local only. All subfolders are included. Google mode requires sign-in; Local only skips it. Once the running client's configuration appears in the host, click **Backup Now** or **Backup selected**. The published agent does not require the .NET SDK on the client.
 
 See **[connection setup](docs/CONNECTION-SETUP.md)** for LAN/firewall setup, automatic Windows Service startup, re-pairing, and troubleshooting.
-See **[destination modes](docs/DESTINATION-MODES.md)**, **[local backup setup](docs/LOCAL-BACKUP.md)** and **[Google Drive setup](docs/GOOGLE-DRIVE-SETUP.md)**. Update **both host and agent** to version 0.8 (protocol 4). Saved pairing credentials/certificates are reused; old invitation files must be regenerated. New local-only records use a separate journal to prevent old agents from rediscovering them for upload. Archive formats 1/2 and recovery exports remain compatible.
+See **[destination modes](docs/DESTINATION-MODES.md)**, **[local backup setup](docs/LOCAL-BACKUP.md)** and **[Google Drive setup](docs/GOOGLE-DRIVE-SETUP.md)**. Update **both host and agent** to version 0.9.0 (protocol 5). Saved pairing credentials/certificates are reused; old invitation files must be regenerated. Local-only records use a separate journal to prevent old agents from rediscovering them for upload. Archive formats 1/2 and recovery exports remain compatible; the new Drive file-tree index is separate from those archive formats.
 
 For recovery, open **Restore** on the host for the selected backup's instructions. Stop the client agent, then run the appropriate command in its published folder:
 

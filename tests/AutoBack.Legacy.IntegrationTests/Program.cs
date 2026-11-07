@@ -21,7 +21,7 @@ try
     var wrong = invitePath + ".wrong";
     await File.WriteAllTextAsync(wrong, JsonSerializer.Serialize(invitation with { CertificateSha256 = new string('0',64) }, Protocol.Json));
     Check(await Cli(["pair", "--invite", wrong, "--name", "Legacy-Wrong-Pin"]) != 0 && host.GetSnapshots().Count == 0, "legacy TLS rejects a mismatched certificate pin");
-    Check(await Cli(["pair", "--invite", invitePath, "--name", "Win7-x86-pilot"]) == 0, "Framework x86 agent pairs with the .NET 10 host using protocol 4/TLS 1.2");
+    Check(await Cli(["pair", "--invite", invitePath, "--name", "Win7-x86-pilot"]) == 0, "Framework x86 agent pairs with the .NET 10 host using protocol 5/TLS 1.2");
     var source = Path.Combine(root, "Documents"); Directory.CreateDirectory(source);
     var payload = RandomNumberGenerator.GetBytes(2 * 1024 * 1024 + 127); await File.WriteAllBytesAsync(Path.Combine(source,"test.bin"), payload);
     Check(await Cli(["configure", "--mode", "local", "--source", source, "--destination", Path.Combine(root,"backups")]) == 0, "legacy CLI saves Local only plan");

@@ -25,7 +25,7 @@ internal static class Program
                 Console.WriteLine("Windows 7 SP1 x86 legacy client (.NET Framework 4.8). Pilot testing on Windows 7 required.");
 #endif
                 Console.WriteLine("""
-                    AutoBack Agent 0.8.3
+                    AutoBack Agent 0.9.0
                     setup                             Interactive pairing, folders and optional Google sign-in
                     re-pair [--invite <file>]          Pair again; keep folders, Google, keys and backup files
                     pair --invite <file> [--name <name>] [--replace]

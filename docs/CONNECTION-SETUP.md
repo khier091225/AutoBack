@@ -101,7 +101,7 @@ To unregister the service, run `Uninstall-AgentService.ps1` as administrator. It
 - **Agent restart:** stored credentials are reused.
 - **Revoke:** the host rejects that identity immediately and persists the revocation. The device is removed from active inventory. Stop its agent, create a fresh invitation, and use `pair --replace` (plus `--machine` for the service) to give it a new identity before starting again.
 
-Connection activity is session history; device/job/automation/recovery/protection data persist. Use the v0.8 host and agent (protocol 4) for Google Drive default/Local only and cache cleanup. Saved pairing credentials/certificates are reused; regenerate older-protocol invitation files for new pairing. Google operations require per-client authorization; Local only does not. See [destination modes](DESTINATION-MODES.md), [automation/rollout](AUTOMATION-ROLLOUT.md) and [physical-PC checklist](ROLLOUT-CHECKLIST.md).
+Connection activity is session history; device/job/automation/recovery/protection data persist. Use the v0.9.0 host and agent (protocol 5) for incremental Drive folder backups and current-folder history. Saved pairing credentials/certificates are reused; regenerate older-protocol invitation files for new pairing. Google operations require per-client authorization; Local only does not. See [incremental Drive](INCREMENTAL-DRIVE.md), [destination modes](DESTINATION-MODES.md), [automation/rollout](AUTOMATION-ROLLOUT.md) and [physical-PC checklist](ROLLOUT-CHECKLIST.md).
 
 ## Troubleshooting
 

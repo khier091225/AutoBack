@@ -91,7 +91,7 @@ public sealed class BackupFoldersForm : Form
             destinationLabel.Visible = destination.Visible = LocalOnlyMode.Checked;
             DestinationInput.Enabled = LocalOnlyMode.Checked;
             modeHelp.Text = LocalOnlyMode.Checked ? "Save a permanent backup on this PC or a local drive. Google Drive uploads are paused."
-                : "Upload to your connected Google Drive. Temporary archives are managed automatically and cleared after verified upload.";
+                : "One PC folder in Google Drive. Upload new/changed files only; keep files removed from this PC. Temporary local snapshots clear after verification.";
             Feedback.Text = ""; InvalidateAccess(); UpdateState();
         }
         GoogleDriveMode.CheckedChanged += (_, _) => ApplyMode(); LocalOnlyMode.CheckedChanged += (_, _) => ApplyMode();

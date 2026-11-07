@@ -22,9 +22,9 @@ public sealed class DriveException(DriveFailure failure, string message) : Excep
 }
 
 public sealed record RemoteFile(string Id, string MimeType, long Size, string? Md5, string? Sha256,
-    bool Trashed, string[] Parents, Dictionary<string, string> Properties);
+    bool Trashed, string[] Parents, Dictionary<string, string> Properties, string? Name = null);
 public sealed record UploadCheckpoint(string? FileId = null, string? SessionUri = null, string? Md5 = null,
-    string? Sha256 = null, long Length = 0);
+    string? Sha256 = null, long Length = 0, string? FolderId = null);
 public sealed record UploadProgress(long ConfirmedBytes, long TotalBytes, string Detail);
 public sealed record UploadResult(string FileId, string WebLink, long Size);
 

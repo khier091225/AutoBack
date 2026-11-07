@@ -244,6 +244,53 @@ try
         catch (AgentRejectedException) { }
         Check(host.GetJobs().Single().Cloud?.State == "Completed", "another paired agent cannot alter this cloud result");
     });
+    await Run("one PC folder uploads only changed files, retains deletions and restores the current backup", async () =>
+    {
+        var store = Store("tree-store"); Seed(store);
+        var source = Path.Combine(root, "tree", "Desktop"); Directory.CreateDirectory(Path.Combine(source, "Empty"));
+        await File.WriteAllTextAsync(Path.Combine(source,"test.xlsx"), "initial");
+        await File.WriteAllTextAsync(Path.Combine(source,"keep-deleted.txt"), "Keep this after it is deleted from Desktop.");
+        await File.WriteAllBytesAsync(Path.Combine(source,"unchanged.bin"), RandomNumberGenerator.GetBytes(300_000));
+        await File.WriteAllBytesAsync(Path.Combine(source,"empty.txt"), []);
+        var agent = Guid.NewGuid(); var plan = BackupPlan.CreateForTarget([source], BackupTargets.GoogleDrive, null, store.DirectoryPath);
+        var account = store.Load<DriveAccount>("drive-account.dat")!;
+        var google = new FakeGoogle(); using var http = new HttpClient(google);
+        var uploader = new DriveTreeUploader(store,http,agent,"KHIER");
+        async Task<TreeUploadResult> Upload()
+        {
+            var command = new BackupCommand(Guid.NewGuid(),plan.PlanId,DateTimeOffset.UtcNow);
+            var backup = await new LocalBackupEngine().CreateAsync(plan,agent,command,_=>{});
+            return await uploader.UploadAsync(command.JobId,backup.ArchivePath,account.Key,_=>{},_=>{},CancellationToken.None);
+        }
+        var first = await Upload();
+        var folder = google.Files.Single(f => f.GetProperty("id").GetString()==first.FolderId);
+        Check(folder.GetProperty("name").GetString()=="KHIER" && first.UploadedFiles==4, "PC folder has only its paired name and initial backup uploads every file including zero bytes");
+        var oldIds = google.Files.Where(f=>f.GetProperty("mimeType").GetString()=="application/octet-stream").ToDictionary(f=>f.GetProperty("name").GetString()!,f=>f.GetProperty("id").GetString()!);
+        var previousTime=File.GetLastWriteTimeUtc(Path.Combine(source,"test.xlsx"));
+        await File.WriteAllTextAsync(Path.Combine(source,"test.xlsx"), "updated"); File.SetLastWriteTimeUtc(Path.Combine(source,"test.xlsx"),previousTime);
+        File.Delete(Path.Combine(source,"keep-deleted.txt")); await File.WriteAllTextAsync(Path.Combine(source,"added.txt"), "New document.");
+        var before=google.WrittenNames.Count; var bytesBefore=google.UploadedBytes;
+        var second=await Upload(); var writes=google.WrittenNames.Skip(before).ToArray();
+        Check(second.FolderId==first.FolderId && second.UploadedFiles==2 && second.RetainedFiles==1 && writes.Order().SequenceEqual(new[]{"_AutoBack.json","added.txt","test.xlsx"}.Order()), "second backup updates only changed/new files and a small recovery index; source deletions stay in Drive");
+        Check(google.UploadedBytes-bytesBefore<100_000 && !writes.Contains("unchanged.bin"), "unchanged large file bytes are not uploaded again");
+        Check(google.Files.Single(f=>f.GetProperty("name").GetString()=="test.xlsx").GetProperty("id").GetString()==oldIds["test.xlsx"], "edited file keeps its existing Drive file ID");
+        var download=Path.Combine(root,"tree-download.zip");
+        await new DriveDownloader(store,http).DownloadAsync($"https://drive.google.com/drive/folders/{second.FolderId}",download);
+        var restored=await new RestoreEngine().RestoreAsync(download,Path.Combine(root,"tree-restored"),new("GoogleDrive","Test folder"));
+        Check(await File.ReadAllTextAsync(Path.Combine(restored.PayloadDirectory,"Desktop","test.xlsx"))=="updated" && File.Exists(Path.Combine(restored.PayloadDirectory,"Desktop","keep-deleted.txt")), "folder restore recovers the updated spreadsheet and files retained after local deletion");
+        before=google.WrittenNames.Count; var third=await Upload();
+        Check(third.UploadedFiles==0 && google.WrittenNames.Skip(before).SequenceEqual(["_AutoBack.json"]), "a backup with no content changes sends no file payloads");
+        // Simulate losing only the local incremental cache. Recover the baseline from its verified Drive index.
+        store.Delete(DriveTreeUploader.IndexFile); before=google.WrittenNames.Count; await Upload();
+        Check(google.WrittenNames.Skip(before).SequenceEqual(["_AutoBack.json"]), "verified remote recovery index prevents a full re-upload after local index loss");
+        google.Trash(first.FolderId); var recovered=await Upload();
+        Check(recovered.FolderId!=first.FolderId && google.Files.Single(f=>f.GetProperty("id").GetString()==recovered.FolderId).GetProperty("name").GetString()=="KHIER", "a trashed PC destination is replaced automatically with the same PC name");
+        var stable=await Upload(); Check(stable.FolderId==recovered.FolderId, "the recovered folder is reused on every subsequent backup");
+        google.DeniedFileId=stable.FolderId;
+        await Reject(()=>Upload(),DriveFailure.Permanent); google.DeniedFileId=null;
+        Check(store.Load<Dictionary<string,DriveFolders>>("drive-folders.dat")![account.Key].ClientId==stable.FolderId,"access denied does not create another destination or adopt another PC folder");
+    });
+    await TreeChecks.RunAsync(root);
     Console.WriteLine("ALL DRIVE CHECKS PASSED (simulated Google HTTP; no live Google account used)");
     return 0;
 }

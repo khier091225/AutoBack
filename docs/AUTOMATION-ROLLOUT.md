@@ -1,6 +1,6 @@
 # Automation, encryption, retention and deployment — v0.8
 
-New setup defaults to Google Drive with automatic temporary storage/cleanup; Local only is the explicit permanent-local option. Read [destination modes](DESTINATION-MODES.md) before setting retention. Google mode ignores permanent local-retention counts; its confirmed cache is always cleaned. Local only pauses automatic uploads/cloud retention. Existing plans and files are preserved until deliberately reconfigured. Update both endpoints to protocol 4/v0.8; saved pairings remain usable.
+New setup defaults to Google Drive with automatic temporary storage/cleanup; Local only is the explicit permanent-local option. In v0.9.0 Google uses [one incremental PC folder](INCREMENTAL-DRIVE.md), uploading changed files and retaining removed source files. Cloud version retention excludes this live tree; its verified local snapshots are cleaned after host acknowledgment. Read [destination modes](DESTINATION-MODES.md) before setting retention. Local only pauses automatic uploads/cloud retention. Existing plans and files are preserved until deliberately reconfigured. Update both endpoints to protocol 5/v0.9.0; saved pairings remain usable.
 
 ## Daily schedules and local backup retries
 
@@ -73,8 +73,8 @@ On authorized idle runs, the worker checks retention after journal changes and o
 
 Built MSI files are in `artifacts\installers`:
 
-- `AutoBack-Host-0.8.3-win-x64.msi`
-- `AutoBack-Agent-0.8.3-win-x64.msi`
+- `AutoBack-Host-0.9.0-win-x64.msi`
+- `AutoBack-Agent-0.9.0-win-x64.msi`
 - `SHA256SUMS.txt` — SHA-256 checksums for transfer verification.
 
 Both are machine-wide x64 installers and require administrator access. Applications are self-contained; client PCs do not need the .NET SDK. Code is installed under **Program Files**. Start Menu entries launch the host, client setup and the rollout guide. MSI repair/uninstall handles application files and service registration; credential stores, recovery exports, source files, backup archives and cloud data are retained. Uninstall does not revoke pairing: revoke it on the host when retiring a client. The installers are unsigned pilot artifacts unless separately signed by your release process; organizational signing/distribution policy must be applied before broad rollout.

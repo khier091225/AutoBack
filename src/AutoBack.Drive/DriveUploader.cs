@@ -8,7 +8,7 @@ using AutoBack.Connection;
 
 namespace AutoBack.Drive;
 
-public sealed record DriveFolders(string RootId, string ClientId);
+public sealed record DriveFolders(string RootId, string ClientId, bool RootConfirmed = true, bool ClientConfirmed = true);
 
 public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider tokens, HttpClient http, Guid agentId, string agentName)
 {
@@ -45,7 +45,15 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         var state = saved with { Sha256 = sha256, Md5 = checksum, Length = input.Length };
         checkpoint(state);
         var api = new DriveApi(http, tokens, accountKey);
+        var cachedFolders = store.Load<Dictionary<string, DriveFolders>>("drive-folders.dat");
+        var originalFolder = state.FolderId ?? (cachedFolders is not null && cachedFolders.TryGetValue(accountKey, out var oldFolders) ? oldFolders.ClientId : null);
         var folders = await EnsureFoldersAsync(api, accountKey, cancellationToken);
+        if (originalFolder is not null && originalFolder != folders.ClientId)
+        {
+            state = state with { FileId = null, SessionUri = null, FolderId = folders.ClientId };
+            checkpoint(state);
+        }
+        else if (state.FolderId is null) { state = state with { FolderId = folders.ClientId }; checkpoint(state); }
         if (state.FileId is null) { state = state with { FileId = await api.GenerateIdAsync(cancellationToken) }; checkpoint(state); }
         var remote = await api.GetFileAsync(state.FileId!, cancellationToken);
         if (remote is not null && (state.SessionUri is null || (remote.Size == state.Length && remote.Md5 is not null)))
@@ -109,19 +117,8 @@ public sealed class DriveUploader(ProtectedStore store, GoogleTokenProvider toke
         return Verify(remote, state, folders.ClientId, jobId);
     }
 
-    private async Task<DriveFolders> EnsureFoldersAsync(DriveApi api, string accountKey, CancellationToken token)
-    {
-        var cache = store.Load<Dictionary<string, DriveFolders>>("drive-folders.dat") ?? [];
-        if (!cache.TryGetValue(accountKey, out var folders))
-        {
-            folders = new(await api.FindRootAsync(token) ?? await api.GenerateIdAsync(token), await api.GenerateIdAsync(token));
-            cache[accountKey] = folders;
-            store.Save("drive-folders.dat", cache);
-        }
-        await api.EnsureFolderAsync(folders.RootId, "AutoBack Backups", null, "root", agentId, token);
-        await api.EnsureFolderAsync(folders.ClientId, $"{agentName}-{agentId:N}", folders.RootId, "client", agentId, token);
-        return folders;
-    }
+    private Task<DriveFolders> EnsureFoldersAsync(DriveApi api, string accountKey, CancellationToken token) =>
+        new DriveFolderManager(store, api, agentId, agentName).EnsureAsync(accountKey, token);
 
     private UploadResult Verify(RemoteFile remote, UploadCheckpoint state, string folderId, Guid jobId)
     {

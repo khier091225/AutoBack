@@ -16,10 +16,11 @@ public sealed class DriveDownloader(ProtectedStore store, HttpClient http)
             uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo))
         {
             var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 3 && segments[0] == "drive" && segments[1] == "folders" && CloudStates.ValidId(segments[2])) return segments[2];
             if (segments.Length is 3 or 4 && segments[0] == "file" && segments[1] == "d" && CloudStates.ValidId(segments[2]) &&
                 (segments.Length == 3 || segments[3] == "view")) return segments[2];
         }
-        throw new ArgumentException("Provide a Google Drive file ID or its https://drive.google.com/file/d/ID/view link.");
+        throw new ArgumentException("Provide a Google Drive backup file/folder ID or its Drive link.");
     }
 
     public async Task<DownloadedBackup> DownloadAsync(string fileIdOrLink, string destination,
@@ -34,6 +35,8 @@ public sealed class DriveDownloader(ProtectedStore store, HttpClient http)
         var api = new DriveApi(http, account, identity.Key);
         var remote = await api.GetFileAsync(fileId, cancellationToken)
             ?? throw new DriveException(DriveFailure.Permanent, "The Google Drive backup is missing or unavailable to this account.");
+        if (remote.MimeType == "application/vnd.google-apps.folder")
+            return await DriveTreeReader.DownloadAsync(store, api, remote, destination, progress, cancellationToken, maxBytes);
         if (remote.Id != fileId || remote.Trashed || remote.MimeType is not ("application/zip" or "application/octet-stream") || remote.Size <= 0 || remote.Size > maxBytes ||
             !Protocol.ValidSecret(remote.Properties.GetValueOrDefault("autobackSha256")) ||
             !Guid.TryParseExact(remote.Properties.GetValueOrDefault("autobackJob"), "N", out var jobId) || jobId == Guid.Empty ||

@@ -4,7 +4,7 @@ No clean reinstall or credential-store deletion is needed. Removing/revoking a c
 
 ## Recover an installed client
 
-1. Upgrade the client to **v0.8.1** using its matching MSI. Keep its protected data directory and existing backup/recovery files. The host can stay on v0.8.x/protocol 4; this recovery needs no host protocol change.
+1. Upgrade host and matching client to **v0.9.0/protocol 5**. Keep their protected data directories and existing backup/recovery files. Existing healthy pairing does not need to be repeated just for the upgrade.
 2. Keep the host open. Click **Pair computer**, enter the host's reachable LAN address/name and save a fresh `.autoback-invite`. Transfer it to the client. It expires in five minutes and is single-use; create one per client.
 3. On the client, open **Pair AutoBack Agent again** from Start Menu and approve administrator elevation. Alternatively, **Configure AutoBack Agent** now checks the saved host connection and offers **Pair again with a host invitation** and **Change backup folders / settings**.
 4. Select the new invitation. Pairing recovery keeps the configured folders/mode, Google authorization, encryption/recovery keys, retention policy and backup files. It keeps the existing client alias and enrolls a fresh identity.
@@ -19,7 +19,7 @@ Host removal is a revocation, not an undo. A fresh invitation creates a **new id
 
 The old local jobs, cloud checkpoints and account-to-Drive-folder mapping are saved in a DPAPI-protected `pairing-history-{old-agent-id}-{new-agent-id}.dat` file in the same protected store. Old source files, local ZIP/ABK archives, temporary cache files and cloud backups are not deleted. Keys and Google grants are retained. Old backups remain usable through the existing restore commands.
 
-Old pending jobs/uploads are **retired from automatic processing**. They are not resent as the new identity, automatically uploaded to a replacement host, or counted toward its active retention policy. New backups use the new identity and its own Drive client folder. This prevents old unacknowledged progress reports or cached folder ownership from blocking reconnection. Preserve any unconfirmed old temporary archives for manual recovery/inspection; they are not silently removed as successful uploads.
+Old pending jobs/uploads are **retired from automatic processing**. They are not resent as the new identity or counted toward its active retention policy. With v0.9, a newly requested backup rediscovers this installation's existing Drive PC folder using its protected device identity, preserving the single-folder layout. Its verified incremental baseline is retained; any saved file transfer is reused only if the newly selected source's current content/key match. Old job reports are never replayed. The recovery archive also preserves the previous incremental index. Preserve unconfirmed old temporary archives for manual recovery/inspection; they are not silently removed as successful uploads.
 
 The update first stores a protected recovery transition, then preserves old journals before clearing the active queues and committing the new credential. If interrupted, the next command completes the pending change under the same client lock before a worker can start. Failed/expired invitation authentication leaves the existing identity, journals, settings and backups in place.
 
